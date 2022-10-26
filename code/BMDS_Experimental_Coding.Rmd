@@ -1,0 +1,1193 @@
+---
+title: "BMDS Experimental Coding"
+author: "Ami Sheth"
+date: "5/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+```{r}
+library(MASS)
+library(truncnorm)
+library(coda)
+library(invgamma)
+```
+
+### Supplementary functions for log-likelihood
+
+```{r}
+SSR <- function(n, D_latent, D){
+  SSR_val = 0
+  for (i in 1:n){
+    for (j in 1:i){
+      SSR_val = SSR_val + (D[i, j] - D_latent[i, j])^2
+    }
+  }
+  return(SSR_val)
+}
+
+sum_norm <- function(n, D_latent, sigma){
+  logsum = 0
+  for (i in 1:n){
+    for (j in 1:i){
+      stat = D_latent[i, j] / sqrt(sigma)
+      logsum = logsum + log(pnorm(stat)) 
+    }
+  }
+  return(logsum)
+}
+```
+
+### Log-likelihood function without latent variables incorporated
+
+```{r}
+ll <- function(n, sigma, D, D_latent){
+  #n <- dim(D)[1]
+  m <- n * (n - 1) / 2
+  term1 <- (m / 2) * log(sigma)
+  term2 <- (1 / (2 * sigma)) * SSR(n, D_latent, D)
+  term3 <- sum_norm(n, D_latent, sigma)
+  loglik <- - (term1 + term2 + term3)
+  return(loglik)
+}
+```
+
+Simulate the data
+```{r}
+# get a distance matrix, simulate random variable in some dimension space (2-D)
+# Z from a 2D Gaussian distribution with Z ~ N(0, I)
+
+set.seed(12345)
+Z <- mvrnorm(100, mu = c(0, 0), Sigma = diag(c(1, 1)))
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+Z_tilde <- mvrnorm(100, mu = c(0, 0), Sigma = diag(c(1, 1))) + 0.1 # add noise
+D_tilde <- as.matrix(dist(Z_tilde, diag = TRUE, upper = TRUE))
+```
+
+Sanity Checks
+```{r}
+n <- dim(D)[1]
+ll(n, 0.3, D, D)
+ll(n, 0.3, D, D_tilde) # should be smaller
+```
+
+### Log-likelihood function with latent variables incorporated
+
+```{r}
+ll_latent <- function(sigma, D, latent){ 
+  # latent variables (nxk), observed distance matrix D (nxn), sigma^2
+  D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  n <- dim(D_latent)[1]
+  m <- n * (n - 1) / 2
+  term1 <- (m / 2) * log(sigma)
+  term2 <- (1 / (2 * sigma)) * SSR(n, D_latent, D)
+  term3 <- sum_norm(n, D_latent, sigma)
+  loglik <- -(term1 + term2 + term3)
+  return(loglik)
+}
+```
+
+Sanity check, same log-likelihood as above
+```{r}
+set.seed(12345)
+Z <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1)))
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+Z_tilde <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
+ll_latent(sigma = 0.3, D, latent = Z)
+ll_latent(sigma = 0.3, D, latent = Z_tilde)
+```
+
+- computer taking too long for 10,000 not feasible for log-likelihood 
+
+### Metropolis - using Gaussian proposal dist
+
+```{r}
+set.seed(12345)
+maxIts <- 10000
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+
+# target function is the log-posterior which is proportional to log-likelihood + log-prior
+target <- function(theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma = 0.3, D, latent = theta) + 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) # independent, standard Gaussian 
+  return(output)
+}
+
+chain <- array(0, dim = c(maxIts, n, dims)) # array
+chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # randomized starting values, avoid marginal difficulties 
+# chain[1, , ]
+
+for(s in 2:maxIts) {
+  # sampling from proposal with mean coming from previous iteration
+  # domain of latent variable is Euclidean, unbounded
+  # browser()
+  # thetaStar <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1)))
+  # thetaStar <- mvtnorm::rmvnorm(n, mean = chain[s - 1, 1, ])
+  # thetaStar <- mvtnorm::rmvnorm(n, mean = c(mean(chain[1, , 1]), mean(chain[1, , 2])))
+  thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1], sd = 0.234), 
+                     rnorm(n, mean = chain[s - 1, , 2], sd = 0.234))
+  # smaller proposal variance = more acceptances 
+  # proposal: normal dist
+  u <- runif(1)
+  # Metropolis, A = target(thetaStar)/target(previous iteration)
+  logA <- target(thetaStar) - target(chain[s - 1, , ]) # target on log scale
+  
+  if(log(u) < logA) {
+    chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+  } else {
+    chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+  }
+}
+
+# plotting the 1st dimension of the first latent variable across chains
+plot(chain[, 1, 1], type = "l") 
+plot(density(chain[, 1, 1])) 
+hist(chain[, 1, 1], breaks = 50)
+coda::effectiveSize(chain[, 1:10, 1])
+```
+
+Measures of success - should get fuzzy catepillars for the following plots
+
+1. Target function evaluated at the chain states 
+
+```{r}
+target_chain <- c()
+for (i in 1:maxIts){
+  target_chain[i] <- target(chain[i, , ])
+}
+
+plot(target_chain, type = "l")
+plot(target_chain[-(1:1000)], type = "l")
+plot(density(target_chain)) 
+acf(target_chain)
+```
+
+2. Pairwise distances
+
+```{r}
+dist_mat <- array(0, dim = c(maxIts, 25, 25))
+
+for (i in 1:maxIts){
+  dist_mat[i, , ] <- as.matrix(dist(chain[i, , ], diag = TRUE, upper = TRUE))
+}
+
+# randomly plotting some pairwise distances
+par(mfrow=c(2,2))
+plot(dist_mat[, 1, 2], type = "l")
+plot(dist_mat[, 2, 10], type = "l")
+plot(dist_mat[, 25, 5], type = "l")
+plot(dist_mat[, 15, 7], type = "l")
+
+par(mfrow=c(2,2))
+acf(dist_mat[, 1, 2])
+acf(dist_mat[, 2, 10])
+acf(dist_mat[, 25, 5])
+acf(dist_mat[, 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat[, 1, 2]))
+plot(density(dist_mat[, 2, 10]))
+plot(density(dist_mat[, 25, 5]))
+plot(density(dist_mat[, 15, 7]))
+
+#coda::effectiveSize(dist_mat[, 1:25, 1])
+```
+
+Investigations:
+
+1. changing starting point value
+
+```{r}
+# make function and try with different maxIts
+metropolis <- function(maxIts, dims, n, init) {
+  
+  chain <- array(0, dim = c(maxIts, n, dims)) 
+  chain[1, , ] <- init # bad idea for a starting value
+  
+  for(s in 2:maxIts) {
+    # proposal
+    thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1]), rnorm(n, mean = chain[s - 1, , 2]))
+    u         <- runif(1)
+    logA      <- target(thetaStar) - target(chain[s - 1, , ]) # target on log scale
+    
+    if(log(u) < logA) {
+      chain[s, , ] <- thetaStar
+    } else {
+      chain[s, , ] <- chain[s - 1, , ]
+    }
+    
+    if(s %% 100 == 0) cat(s,"\n")
+  }
+  return(chain)
+}
+
+results1 <- metropolis(10000, dims, n, init = -10)
+results2 <- metropolis(10000, dims, n, 10)
+results3 <- metropolis(10000, dims, n, 3)
+iv <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1)))
+results4 <- metropolis(10000, dims, n, iv)
+# lose movement when starting value between -3 and 3
+# convergence around -1 
+
+par(mfrow=c(2,2))
+plot(results1[, 8, 1], type ="l")
+plot(results2[, 25, 2], type ="l")
+plot(results3[, 1, 1], type ="l")
+plot(results4[, 1, 2], type ="l")
+
+par(mfrow=c(2,2))
+plot(density(results1[, 8, 1]))
+plot(density(results2[, 25, 1]))
+plot(density(results3[, 1, 1]))
+plot(density(results4[, 1, 2]))
+```
+
+2. changing target function, ie. changing the prior mean, to see where the posterior converges 
+
+```{r}
+set.seed(12345)
+maxIts <- 10000
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+
+target2 <- function(theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma = 0.3, D, latent = theta) + 
+  sum(mvtnorm::dmvnorm(theta, mean = rep(5, dims), log = TRUE)) 
+  # independent, standard Gaussian 
+  return(output)
+}
+
+chain <- array(0, dim = c(maxIts, n, dims)) # array
+chain[1, , ] <- -10 # bad idea for a starting value
+# chain[1, , ]
+
+for(s in 2:maxIts) {
+  # sampling from proposal with mean coming from previous iteration
+  # domain of latent variable is Euclidean, unbounded
+  thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1]), rnorm(n, mean = chain[s - 1, , 2]))
+  # proposal: normal dist
+  u         <- runif(1)
+  # Metropolis, A = target(thetaStar)/target(previous iteration)
+  logA      <- target2(thetaStar) - target2(chain[s - 1, , ]) # target on log scale
+  
+  if(log(u) < logA) {
+    chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+  } else {
+    chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+  }
+}
+
+plot(chain[, 1, 1], type = "l") # not getting fuzzy catepillar 
+plot(density(chain[, 1, 1]))
+```
+changes convergence to prior mean; distribution centered around prior mean of 5 now
+
+3. changing Z to see where posterior converges
+
+```{r}
+set.seed(12345)
+maxIts <- 10000
+dims <- 2
+n <- 25
+Z2 <- mvtnorm::rmvnorm(n, mean = rep(5, dims), sigma = diag(c(1, 10))) # dims = 2, n = 25
+D2 <- as.matrix(dist(Z2, diag = TRUE, upper = TRUE))
+
+target3 <- function(theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma = 0.3, D2, latent = theta) + 
+  sum(mvtnorm::dmvnorm(theta, mean = rep(0, dims), log = TRUE)) 
+  # independent, standard Gaussian 
+  return(output)
+}
+
+chain <- array(0, dim = c(maxIts, n, dims)) # array
+chain[1, , ] <- -10 # bad idea for a starting value
+# chain[1, , ]
+
+for(s in 2:maxIts) {
+  # sampling from proposal with mean coming from previous iteration
+  # domain of latent variable is Euclidean, unbounded
+  thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1]), rnorm(n, mean = chain[s - 1, , 2]))
+  # proposal: normal dist
+  u         <- runif(1)
+  # Metropolis, A = target(thetaStar)/target(previous iteration)
+  logA      <- target3(thetaStar) - target3(chain[s - 1, , ]) # target on log scale
+  
+  if(log(u) < logA) {
+    chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+  } else {
+    chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+  }
+}
+
+plot(chain[, 1, 1], type = "l") # not getting fuzzy catepillar 
+plot(density(chain[, 1, 1]))
+```
+seems to have no effect
+
+### Metropolis with adaptive stepsize (sd of the MVN)
+
+```{r}
+# target function is the log-posterior which is proportional to log-likelihood + log-prior
+target <- function(theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma = 0.3, D, latent = theta) + 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) # independent, standard Gaussian 
+  return(output)
+}
+
+delta <- function(n) {
+  return( min(0.01, n^(-0.5)) )
+}
+
+adapt_metropolis <- function(dims, maxIts, targetAccept = 0.8, stepSize = 1) {
+  
+  chain <- array(0, dim = c(maxIts, n, dims)) # matrix(0, maxIts, D) 
+  #stepSize <- 1
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  
+  totalAccept <- rep(0, maxIts)
+  Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
+  SampBound = 50   # current total samples before adapting radius
+  SampCount = 0   # number of samples collected (adapt when = SampBound)
+  Proposed = 0
+  
+  for (s in 2:maxIts) {
+    
+    thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1], sd = stepSize), 
+                       rnorm(n, mean = chain[s - 1, , 2], sd = stepSize))
+    # smaller proposal variance = more acceptances 
+    # proposal: normal dist
+    u         <- runif(1)
+    # Metropolis, A = target(thetaStar)/target(previous iteration)
+    logA      <- target(thetaStar) - target(chain[s - 1, , ]) # target on log scale
+    
+    if(log(u) < logA) {
+      chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+      totalAccept[s] <- 1
+      Acceptances = Acceptances + 1 # acceptance counter
+    } else {
+      chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+    }
+    
+    SampCount <- SampCount + 1
+    
+    # tune
+    if (SampCount == SampBound) { 
+      AcceptRatio <- Acceptances / SampBound
+      if ( AcceptRatio > targetAccept ) {
+        stepSize <- stepSize * (1 + delta(s - 1)) # increase stepsize 
+      } else {
+        stepSize <- stepSize * (1 - delta(s - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount <- 0
+      Acceptances <- 0
+    }
+    
+    if (s %% 100 == 0) cat("Iteration ", s, "\n","stepSize: ", stepSize, "\n") 
+  }
+  
+  cat("Acceptance rate: ", sum(totalAccept)/(maxIts - 1))
+  return(chain)
+}
+```
+
+```{r}
+set.seed(12345)
+maxIts <- 100000
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+
+adapt_results <- adapt_metropolis(dims, maxIts, targetAccept = 0.25, stepSize = 1)
+```
+```{r}
+burnin <- 30000
+plot(adapt_results[-(1:burnin), 1, 1], type = "l")
+coda::effectiveSize(adapt_results[-(1:burnin), 1:10, 1])
+acf(adapt_results[-(1:burnin), 1, 1])
+
+# traceplot when target function evaluated at thetas 
+#target_chain_og <- c()
+#for (i in 1:maxIts){
+#  target_chain_og[i] <- target(adapt_results[i, , ])
+#}
+
+
+plot(target_chain_og[-(1:burnin)], type = "l")
+#abline(h = target(Z), col = "red")
+plot(density(target_chain_og[-(1:burnin)])) 
+acf(target_chain_og[-(1:burnin)])
+coda::effectiveSize(target_chain_og[-(1:burnin)])
+
+# traceplot for pairwise distances
+#dist_mat_og <- array(0, dim = c(maxIts, 25, 25))
+#for (i in 1:maxIts){
+#  dist_mat_og[i, , ] <- as.matrix(dist(adapt_results[i, , ], diag = TRUE, upper = TRUE))
+#}
+
+par(mfrow=c(2,2))
+plot(dist_mat_og[-(1:burnin), 1, 2], type = "l")
+abline(h = D[1, 2], col = "red")
+plot(dist_mat_og[-(1:burnin), 2, 10], type = "l")
+abline(h = D[2, 10], col = "red")
+plot(dist_mat_og[-(1:burnin), 25, 5], type = "l")
+abline(h = D[25, 5], col = "red")
+plot(dist_mat_og[-(1:burnin), 15, 7], type = "l")
+abline(h = D[15, 7], col = "red") # more off than the others
+
+par(mfrow=c(2,2))
+acf(dist_mat_og[-(1:burnin), 1, 2])
+acf(dist_mat_og[-(1:burnin), 2, 10])
+acf(dist_mat_og[-(1:burnin), 25, 5])
+acf(dist_mat_og[-(1:burnin), 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat_og[-(1:burnin), 1, 2]))
+plot(density(dist_mat_og[-(1:burnin), 2, 10]))
+plot(density(dist_mat_og[-(1:burnin), 25, 5]))
+plot(density(dist_mat_og[-(1:burnin), 15, 7]))
+
+coda::effectiveSize(dist_mat_og[-(1:burnin), 1:25, 10])
+```
+
+### Metropolis for latent variables and sigma with adaptive stepsize (sd of the MVN)
+
+```{r}
+# target function is the log-posterior which is proportional to log-likelihood + log-priors
+target2 <- function(sigma, theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma, D, latent = theta) + 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) + # independent, standard Gaussian prior for theta
+    dinvgamma(sigma, shape = 1, rate = 1, log = TRUE) # inverse-gamma prior for sigma
+  return(output)
+}
+
+delta <- function(n) {
+  return( min(0.01, n^(-0.5)) )
+}
+
+adapt_metropolis2 <- function(dims, maxIts, 
+                              targetAccept = 0.8, targetAccept_Sigma = 0.8, 
+                              stepSize = 1, stepSizeSigma = 1) {
+  
+  # create the chain 
+  chain <- array(0, dim = c(maxIts, n, dims)) # matrix(0, maxIts, D) 
+  sigma_chain <- rep(0, maxIts)
+  #stepSize <- 1
+  
+  # specify the first random value
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  sigma_chain[1] <- 1 # runif(1, min = 0.01, max = 0.99) # pick large number 
+  
+  totalAccept <- rep(0, maxIts)
+  totalAccept_Sigma <- rep(0, maxIts)
+  Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
+  Acceptances_Sigma = 0
+  SampBound = 50   # current total samples before adapting radius
+  SampCount = 0   # number of samples collected (adapt when = SampBound)
+  SampCount_Sigma = 0
+  
+  for (s in 2:maxIts) {
+    
+    thetaStar <- cbind(rnorm(n, mean = chain[s - 1, , 1], sd = stepSize), 
+                       rnorm(n, mean = chain[s - 1, , 2], sd = stepSize))
+    # smaller proposal variance = more acceptances 
+    # proposal: normal dist
+    u <- runif(1)
+    # Metropolis, A = target(thetaStar)/target(previous iteration)
+    logA <- target2(sigma_chain[s - 1], thetaStar) - 
+      target2(sigma_chain[s - 1], chain[s - 1, , ]) # target on log scale
+    
+    if(log(u) < logA) {
+      chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+      totalAccept[s] <- 1
+      Acceptances = Acceptances + 1 # acceptance counter
+    } else {
+      chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+    }
+    
+    # proposal distribution for sigma
+    sigmaStar <- rtruncnorm(1, a = 0, b = Inf, mean = sigma_chain[s - 1], sd = stepSizeSigma) 
+    
+    # Metropolis, A2 = target(sigmaStar)/target(previous iteration)
+    # comparing new and old sigma with current chain, no longer symmetric proposal 
+    logA2 <- target2(sigmaStar, chain[s, , ]) - 
+      target2(sigma_chain[s - 1], chain[s, , ]) + 
+      log(truncnorm::dtruncnorm(x = sigma_chain[s - 1], a = 0, 
+                                    mean = sigmaStar, sd = stepSizeSigma)) - 
+      log(truncnorm::dtruncnorm(x = sigmaStar, a = 0, 
+                                    mean = sigma_chain[s - 1], sd = stepSizeSigma)) 
+    
+    u2 <- runif(1)
+    if(log(u2) < logA2) {
+      sigma_chain[s] <- sigmaStar
+      totalAccept_Sigma[s] <- 1
+      Acceptances_Sigma <- Acceptances_Sigma + 1
+    } else {
+      sigma_chain[s] <- sigma_chain[s - 1]
+    }
+    
+    SampCount <- SampCount + 1
+    SampCount_Sigma <- SampCount_Sigma + 1
+    
+    # tune
+    if (SampCount == SampBound) { 
+      AcceptRatio <- Acceptances / SampBound
+      if ( AcceptRatio > targetAccept ) {
+        stepSize <- stepSize * (1 + delta(s - 1)) # increase stepsize 
+      } else {
+        stepSize <- stepSize * (1 - delta(s - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount <- 0
+      Acceptances <- 0
+    }
+    
+    if (SampCount_Sigma == SampBound) { 
+      AcceptRatio_Sigma <- Acceptances_Sigma / SampBound
+      if (AcceptRatio_Sigma > targetAccept_Sigma) {
+        stepSizeSigma <- stepSizeSigma * (1 + delta(s - 1)) # increase stepsize 
+      } else {
+        stepSizeSigma <- stepSizeSigma * (1 - delta(s - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount_Sigma <- 0
+      Acceptances_Sigma <- 0
+    }
+    
+    if (s %% 100 == 0) cat("Iteration ", s, "\n","stepSize: ", stepSize, "\n",
+                           "stepSizeSigma: ", stepSizeSigma, "\n") 
+  }
+  
+  cat("Acceptance rate: ", sum(totalAccept)/(maxIts - 1), 
+      "Acceptance rate for sigma: ", sum(totalAccept_Sigma)/(maxIts - 1))
+  
+  return(list(sigma_chain, chain))
+}
+```
+
+Sanity checks with sigma having no perturbations
+
+```{r}
+set.seed(12345)
+maxIts <- 100000 # needs to run longer than this
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+
+stimemh <- proc.time()
+adapt_results2 <- adapt_metropolis2(dims, maxIts, targetAccept = 0.65, 
+                                    targetAccept_Sigma = 0.5,
+                                    stepSize = 1, stepSizeSigma = 1)
+(timemh <- proc.time() - stimemh)
+```
+
+mse for different sample sizes 
+
+```{r}
+set.seed(12345)
+maxIts <- 100000
+burnin <- 30000
+dims <- 2
+samp <- c(10, 15, 20, 25, 30)
+
+mse_mh <- c()
+for (r in 1:length(samp)){
+  n <- samp[r]
+  Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+  D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+  sim_mh <- adapt_metropolis2(dims, maxIts, targetAccept = 0.65,
+                               targetAccept_Sigma = 0.5, stepSize = 1, stepSizeSigma = 1)
+  error <- c()
+  for (t in 1:maxIts){
+    error[t] <- mean((as.matrix(dist(sim_mh[[2]][t, , ], diag = TRUE, upper = TRUE)) - D)^2)
+  }
+  mse_mh[r] <- mean(error[-(1:burnin)])
+}
+```
+```{r}
+mse_mh
+```
+
+
+```{r}
+plot(adapt_results2[[2]][-(1:burnin), 1, 1], type = "l") # first latent variable, first dimension
+plot(adapt_results2[[1]][-(1:burnin)], type = "l") # sigmas
+
+# traceplot when target function evaluated at thetas 
+target_chain_mh <- c()
+for (i in 1:maxIts){
+  target_chain_mh[i] <- target2(adapt_results2[[1]][i], adapt_results2[[2]][i, , ])
+}
+
+plot(target_chain_mh[-(1:burnin)], type = "l")
+#abline(h = target(Z), col = "red")
+plot(density(target_chain_mh[-(1:burnin)])) 
+acf(target_chain_mh[-(1:burnin)])
+coda::effectiveSize(target_chain_mh[-(1:burnin)])
+
+# traceplot for pairwise distances
+dist_mat_mh <- array(0, dim = c(maxIts, 25, 25))
+for (i in 1:maxIts){
+  dist_mat_mh[i, , ] <- as.matrix(dist(adapt_results2[[2]][i, , ], diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+plot(dist_mat_mh[-(1:burnin), 1, 2], type = "l")
+abline(h = D[1, 2], col = "red")
+plot(dist_mat_mh[-(1:burnin), 2, 10], type = "l")
+abline(h = D[2, 10], col = "red")
+plot(dist_mat_mh[-(1:burnin), 25, 5], type = "l")
+abline(h = D[25, 5], col = "red")
+plot(dist_mat_mh[-(1:burnin), 15, 7], type = "l")
+abline(h = D[15, 7], col = "red") # more off than the others
+
+par(mfrow=c(2,2))
+acf(dist_mat_mh[-(1:burnin), 1, 2])
+acf(dist_mat_mh[-(1:burnin), 2, 10])
+acf(dist_mat_mh[-(1:burnin), 25, 5])
+acf(dist_mat_mh[-(1:burnin), 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat_mh[-(1:burnin), 1, 2]))
+plot(density(dist_mat_mh[-(1:burnin), 2, 10]))
+plot(density(dist_mat_mh[-(1:burnin), 25, 5]))
+plot(density(dist_mat_mh[-(1:burnin), 15, 7]))
+
+coda::effectiveSize(dist_mat_mh[-(1:burnin), 1:25, 10])
+```
+
+Sanity checks for sigma with perturbation 
+
+```{r}
+set.seed(12345)
+maxIts <- 100000
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+error <- matrix(rexp(n^2, rate = 1), n, n) # mean = 1
+error <- (error + t(error)) / 2
+diag(error) <- 0
+D <- error + D
+
+adapt_results3 <- adapt_metropolis2(dims, maxIts, targetAccept = 0.25,
+                                    targetAccept_Sigma = 0.5,
+                                    stepSize = 1, stepSizeSigma = 5)
+```
+```{r}
+burnin <- 10000
+plot(adapt_results3[[2]][-(1:burnin), 1, 1], type = "l") # first latent variable, first dimension
+plot(adapt_results3[[1]][-(1:burnin)], type = "l") # convergence around .7 for sigma
+
+# traceplot when target function evaluated at thetas 
+target_chain_mh2 <- c()
+for (i in 1:maxIts){
+  target_chain_mh2[i] <- target2(adapt_results3[[1]][i], adapt_results3[[2]][i, , ])
+}
+
+
+plot(target_chain_mh2[-(1:burnin)], type = "l")
+#abline(h = target(Z), col = "red")
+plot(density(target_chain_mh2[-(1:burnin)])) 
+acf(target_chain_mh2[-(1:burnin)])
+coda::effectiveSize(target_chain_mh2[-(1:burnin)])
+
+# traceplot for pairwise distances
+dist_mat_mh2 <- array(0, dim = c(maxIts, 25, 25))
+
+for (i in 1:maxIts){
+  dist_mat_mh2[i, , ] <- as.matrix(dist(adapt_results3[[2]][i, , ], diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+plot(dist_mat_mh2[-(1:burnin), 1, 2], type = "l")
+abline(h = D[1, 2], col = "red")
+plot(dist_mat_mh2[-(1:burnin), 2, 10], type = "l")
+abline(h = D[2, 10], col = "red")
+plot(dist_mat_mh2[-(1:burnin), 25, 5], type = "l")
+abline(h = D[25, 5], col = "red")
+plot(dist_mat_mh2[-(1:burnin), 15, 7], type = "l")
+abline(h = D[15, 7], col = "red") # more off than the others
+
+par(mfrow=c(2,2))
+acf(dist_mat_mh2[-(1:burnin), 1, 2])
+acf(dist_mat_mh2[-(1:burnin), 2, 10])
+acf(dist_mat_mh2[-(1:burnin), 25, 5])
+acf(dist_mat_mh2[-(1:burnin), 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat_mh2[-(1:burnin), 1, 2]))
+plot(density(dist_mat_mh2[-(1:burnin), 2, 10]))
+plot(density(dist_mat_mh2[-(1:burnin), 25, 5]))
+plot(density(dist_mat_mh2[-(1:burnin), 15, 7]))
+
+coda::effectiveSize(dist_mat_mh2[-(1:burnin), 1:25, 10])
+```
+
+### Hamiltonian Monte Carlo Simulation
+
+Functions- 
+
+```{r}
+target <- function(theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma = 0.3, D, latent = theta) + 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) # independent, standard Gaussian 
+  return(output)
+}
+
+target2 <- function(sigma, theta) { # theta the latent variable; dims x 1 vector
+  output <- ll_latent(sigma, D, latent = theta) + 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) + # independent, standard Gaussian prior for theta
+    dinvgamma(sigma, shape = 1, rate = 1, log = TRUE) # inverse-gamma prior for sigma
+  return(output)
+}
+
+delta <- function(n) {
+  return( min(0.01, n^(-0.5)) )
+}
+# dp/dt = gradient of posterior (target distribution)
+
+grad <- function(sigma, D, latent) {
+  D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  n <- dim(D_latent)[1]
+  grad_ll <- matrix(0, nrow = n, ncol = 2)
+  stat <- D_latent / sqrt(sigma) # sigma = $\sigma^2$
+  pstat <- pnorm(stat)
+  dstat <- dnorm(stat)
+  
+  for (i in 1:n){
+    grad_1row <- matrix(0, nrow = n, ncol = 2)
+    for (j in 1:n){
+      if (i != j){
+        stat = D_latent[i, j] / sqrt(sigma) # sigma = $\sigma^2$
+        grad_1row[j, ] <- ((D_latent[i, j] - D[i, j]) / sigma +
+          dstat[i, j] / (sqrt(sigma) * pstat[i, j])) * ((latent[i, ] - latent[j, ])/ D_latent[i, j])
+      }
+    }
+    grad_ll[i, ] <- - colSums(grad_1row) - latent[i, ]
+  }
+  return(grad_ll) 
+}
+
+########## sigma set ############
+
+hmc <- function(dims, maxIts, stepSize = 0.01) {
+  
+  chain <- array(0, dim = c(maxIts, n, dims))
+  acceptances <- 0
+  L <- 20 # number of leapfrog steps
+  
+  # random starting point for latent varibles 
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+  currentU  <- - target(chain[1, , ]) # U(q0) = - log posterior 
+  
+  for (i in 2:maxIts) {
+    proposalState <- chain[i - 1, , ] # q0
+    momentum <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims)) # p0
+    currentK <- sum(momentum^2)/2 # only valid bc independence? dimension K(p0)
+    
+    # leapfrog steps - obtain qt and pt 
+    momentum <- momentum + 0.5 * stepSize * grad(sigma = 0.3, D, proposalState) # half-step 
+    
+    for (l in 1:L) { # full step for p and q unless end of trajectory
+      proposalState <- proposalState + stepSize * momentum # qt
+      if (l != L) momentum <- momentum + stepSize * grad(sigma = 0.3, D, proposalState)
+    }
+
+    momentum <- momentum + 0.5 * stepSize * grad(sigma = 0.3, D, proposalState) # half-step, pt
+    
+    # quantities for accept/reject
+    proposedU = - target(proposalState) # U(qt)
+    proposedK = sum(momentum^2)/2 # K(pt)
+    u <- runif(1)
+    
+    if (log(u) < currentU - proposedU + currentK - proposedK) {
+      chain[i, , ]   <- proposalState # move pt to be p0 now
+      currentU    <- proposedU # update U(p0)
+      acceptances <- acceptances + 1
+    } else {
+      chain[i, , ] <- chain[i - 1, , ] # keep p0 
+    }
+    
+    if (i %% 100 == 0) cat("Iteration ", i,"\n") 
+  }
+  
+  cat("Acceptance rate: ", acceptances/(maxIts - 1))
+  return(chain)
+}
+
+########## joint latent and sigma inference ############
+
+hmc_joint <- function(dims, maxIts, stepSize = 0.01, stepSizeSigma = 1, targetAccept = 0.8, 
+                      targetAccept_Sigma = 0.8) {
+  
+  # initialization for latent variable
+  chain <- array(0, dim = c(maxIts, n, dims))
+  acceptances <- 0
+  totalaccept <- rep(0, maxIts)
+  SampCount = 0
+  SampBound = 50   # current total samples before adapting radius
+  
+  # initialization for sigma
+  sigma_chain <- rep(0, maxIts)
+  acceptances_sigma <- 0
+  totaccept_sigma <- rep(0, maxIts)
+  SampCount_Sigma <- 0
+
+  L <- 20 # number of leapfrog steps
+  
+  # random starting point for latent variables and sigma
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+  sigma_chain[1] <- 1
+  currentU  <- - target2(sigma_chain[1], chain[1, , ]) # U(q0) = - log posterior 
+  
+  for (i in 2:maxIts) {
+    ####### update for latent variables - HMC
+    proposalState <- chain[i - 1, , ] # q0
+    momentum <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims)) # p0
+    currentK <- sum(momentum^2)/2 # only valid bc independence? dimension K(p0)
+    
+    # leapfrog steps - obtain qt and pt 
+    momentum <- momentum + 0.5 * stepSize * grad(sigma_chain[i - 1], D, proposalState) # half-step 
+    
+    for (l in 1:L) { # full step for p and q unless end of trajectory
+      proposalState <- proposalState + stepSize * momentum # qt
+      if (l != L) momentum <- momentum + stepSize * grad(sigma_chain[i - 1], D, proposalState)
+    }
+
+    momentum <- momentum + 0.5 * stepSize * grad(sigma_chain[i - 1], D, proposalState) # half-step, pt
+    
+    # quantities for accept/reject
+    proposedU = - target2(sigma_chain[i - 1], proposalState) # U(qt)
+    proposedK = sum(momentum^2)/2 # K(pt)
+    u <- runif(1)
+    
+    if (log(u) < currentU - proposedU + currentK - proposedK) {
+      chain[i, , ]   <- proposalState # move pt to be p0 now
+      currentU    <- proposedU # update U(p0)
+      acceptances <- acceptances + 1
+      totalaccept[i] <- 1
+    } else {
+      chain[i, , ] <- chain[i - 1, , ] # keep p0 
+    }
+    
+    ####### update for sigma - adaptive Metropolis 
+    
+    # proposal distribution for sigma
+    sigmaStar <- rtruncnorm(1, a = 0, b = Inf, mean = sigma_chain[i - 1], sd = stepSizeSigma) 
+    
+    # comparing new and old sigma with current chain, no longer symmetric proposal 
+    logA <- target2(sigmaStar, chain[i, , ]) + proposedU + 
+      log(truncnorm::dtruncnorm(x = sigma_chain[i - 1], a = 0, 
+                                    mean = sigmaStar, sd = stepSizeSigma)) - 
+      log(truncnorm::dtruncnorm(x = sigmaStar, a = 0, 
+                                    mean = sigma_chain[i - 1], sd = stepSizeSigma)) 
+    u2 <- runif(1)
+    
+    if(log(u2) < logA) {
+      sigma_chain[i] <- sigmaStar
+      totaccept_sigma[i] <- 1
+      acceptances_sigma <- acceptances_sigma + 1
+    } else {
+      sigma_chain[i] <- sigma_chain[i - 1]
+    }
+    
+    # adaptive stepsize for latent variables
+    SampCount <- SampCount + 1
+    
+    if (SampCount == SampBound) { 
+      AcceptRatio <- acceptances / SampBound
+      if (AcceptRatio > targetAccept) {
+        stepSize <- stepSize * (1 + delta(i - 1)) # increase stepsize 
+      } else {
+        stepSize <- stepSize * (1 - delta(i - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount <- 0
+      acceptances <- 0
+    }
+    
+    # adaptive stepsize for sigma
+    SampCount_Sigma <- SampCount_Sigma + 1
+    
+    if (SampCount_Sigma == SampBound) { 
+      AcceptRatio_Sigma <- acceptances_sigma / SampBound
+      if (AcceptRatio_Sigma > targetAccept_Sigma) {
+        stepSizeSigma <- stepSizeSigma * (1 + delta(i - 1)) # increase stepsize 
+      } else {
+        stepSizeSigma <- stepSizeSigma * (1 - delta(i - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount_Sigma <- 0
+      acceptances_sigma <- 0
+    }
+    
+    if (i %% 100 == 0) cat("Iteration ", i, "\n","stepSize: ", stepSize, "\n",
+                           "stepSizeSigma: ", stepSizeSigma, "\n") 
+  }
+  
+  cat("Acceptance rate: ", sum(totalaccept)/(maxIts - 1), 
+      "Acceptance rate sigma: ", sum(totaccept_sigma)/(maxIts - 1))
+
+  return(list(sigma_chain, chain))
+}
+```
+
+effective sample size, acf, effective sample size/ time (systemtime, look up online), getting joint inference working
+
+```{r}
+set.seed(12345)
+maxIts <- 100
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+
+stimehmc <- proc.time()
+hmc_results <- hmc(dims, maxIts, stepSize = 0.01)
+(timehmc <- proc.time - stimehmc)
+```
+
+```{r}
+set.seed(12345)
+maxIts <- 100000
+dims <- 2
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
+
+stimejhmc <- proc.time()
+joint_hmc_results <- hmc_joint(dims, maxIts, targetAccept = 0.65, targetAccept_Sigma = 0.5, 
+                               stepSize = 0.01, stepSizeSigma = 5)
+(timejhmc <- proc.time() - stimejhmc) #17997.06 
+```
+
+Checks for HMC with sigma set 
+
+```{r}
+burnin <- 1
+# latent variables
+plot(hmc_results[-(1:burnin), 1, 1], type = "l")
+coda::effectiveSize(hmc_results[-(1:burnin), 1:10, 1])
+acf(hmc_results[-(1:burnin), 1, 1])
+
+# target function
+target_chain_hmc <- c()
+for (i in 1:maxIts){
+  target_chain_hmc[i] <- target(hmc_results[i, , ])
+}
+
+plot(target_chain_hmc[-(1:burnin)], type = "l")
+#abline(h = target(Z), col = "red")
+plot(density(target_chain_hmc[-(1:burnin)])) 
+acf(target_chain_hmc[-(1:burnin)])
+coda::effectiveSize(target_chain_hmc[-(1:burnin)])
+
+# pairwise distances
+dist_mat_hmc <- array(0, dim = c(maxIts, 25, 25))
+for (i in 1:maxIts){
+  dist_mat_hmc[i, , ] <- as.matrix(dist(hmc_results[i, , ], diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+plot(dist_mat_hmc[-(1:burnin), 1, 2], type = "l")
+abline(h = D[1, 2], col = "red")
+plot(dist_mat_hmc[-(1:burnin), 2, 10], type = "l")
+abline(h = D[2, 10], col = "red")
+plot(dist_mat_hmc[-(1:burnin), 25, 5], type = "l")
+abline(h = D[25, 5], col = "red")
+plot(dist_mat_hmc[-(1:burnin), 15, 7], type = "l")
+abline(h = D[15, 7], col = "red") # more off than the others
+
+par(mfrow=c(2,2))
+acf(dist_mat_hmc[-(1:burnin), 1, 2])
+acf(dist_mat_hmc[-(1:burnin), 2, 10])
+acf(dist_mat_hmc[-(1:burnin), 25, 5])
+acf(dist_mat_hmc[-(1:burnin), 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat_hmc[-(1:burnin), 1, 2]))
+plot(density(dist_mat_hmc[-(1:burnin), 2, 10]))
+plot(density(dist_mat_hmc[-(1:burnin), 25, 5]))
+plot(density(dist_mat_hmc[-(1:burnin), 15, 7]))
+
+coda::effectiveSize(dist_mat_hmc[-(1:burnin), 1:25, 10])
+```
+
+Checks for HMC with joint inference
+```{r}
+burnin <- 30000
+
+# latent variables
+plot(joint_hmc_results[[2]][-(1:burnin), 1, 1], type = "l")
+plot(joint_hmc_results[[1]][-(1:burnin)], type = "l")
+coda::effectiveSize(joint_hmc_results[[2]][-(1:burnin), 1:10, 1])
+acf(joint_hmc_results[[2]][-(1:burnin), 1, 1])
+
+# target function
+target_chain_hmc2 <- c()
+for (i in 1:maxIts){
+  target_chain_hmc2[i] <- target2(joint_hmc_results[[1]][i], joint_hmc_results[[2]][i, , ])
+}
+
+plot(target_chain_hmc2[-(1:burnin)], type = "l")
+#abline(h = target(Z), col = "red")
+plot(density(target_chain_hmc2[-(1:burnin)])) 
+acf(target_chain_hmc2[-(1:burnin)])
+coda::effectiveSize(target_chain_hmc2[-(1:burnin)])
+
+# pairwise distances
+dist_mat_hmc2 <- array(0, dim = c(maxIts, 25, 25))
+for (i in 1:maxIts){
+  dist_mat_hmc2[i, , ] <- as.matrix(dist(joint_hmc_results[[2]][i, , ], 
+                                         diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+plot(dist_mat_hmc2[-(1:burnin), 1, 2], type = "l")
+abline(h = D[1, 2], col = "red")
+plot(dist_mat_hmc2[-(1:burnin), 2, 10], type = "l")
+abline(h = D[2, 10], col = "red")
+plot(dist_mat_hmc2[-(1:burnin), 25, 5], type = "l")
+abline(h = D[25, 5], col = "red")
+plot(dist_mat_hmc2[-(1:burnin), 15, 7], type = "l")
+abline(h = D[15, 7], col = "red") # more off than the others
+
+par(mfrow=c(2,2))
+acf(dist_mat_hmc2[-(1:burnin), 1, 2])
+acf(dist_mat_hmc2[-(1:burnin), 2, 10])
+acf(dist_mat_hmc2[-(1:burnin), 25, 5])
+acf(dist_mat_hmc2[-(1:burnin), 15, 7])
+
+par(mfrow=c(2,2))
+plot(density(dist_mat_hmc2[-(1:burnin), 1, 2]))
+plot(density(dist_mat_hmc2[-(1:burnin), 2, 10]))
+plot(density(dist_mat_hmc2[-(1:burnin), 25, 5]))
+plot(density(dist_mat_hmc2[-(1:burnin), 15, 7]))
+
+coda::effectiveSize(dist_mat_hmc2[-(1:burnin), 1:25, 10])
+```
+
+### Comparing effective sample size and time for HMC and MH
+
+```{r}
+# target function
+coda::effectiveSize(target_chain_mh[-(1:burnin)])/timemh[3]
+
+coda::effectiveSize(target_chain_hmc2[-(1:burnin)])/timejhmc[3]
+
+(coda::effectiveSize(target_chain_mh[-(1:burnin)])/timemh[3])/ (coda::effectiveSize(target_chain_hmc2[-(1:burnin)])/timejhmc[3]) # mh 7x faster
+
+# pairwise distances
+mhefftime <- coda::effectiveSize(dist_mat_mh[-(1:burnin), 1:25, 10])/timemh[3]
+
+hmcefftime <- coda::effectiveSize(dist_mat_hmc2[-(1:burnin), 1:25, 10])/timejhmc[3]
+
+hmcefftime / mhefftime # hm 2 times faster per sample size 
+```
+
+
+
+### Attempt at target function - using my own prior & likelihood function 
+
+log-prior for latent variables 
+```{r}
+ll_prior <- function(theta, M_0, S_0, dim){
+  invS_0 <- solve(S_0)
+  prior <- -(dim / 2) * log(det(S_0)) - 
+    (1 / 2) * sum(diag(invS_0 %*% t(theta - M_0) %*% (theta - M_0)))
+  return(prior)
+}
+```
+
+```{r}
+set.seed(12345)
+dims <- 2
+maxIts <- 10000
+n <- 25
+#Z <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1)))
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, 2), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+
+# target function is the log-posterior which is proportional to log-likelihood + log-prior
+target4 <- function(theta) { # theta the latent variable?? but theta is dims x 1 vector
+  M_0 <- matrix(0, nrow = n, ncol = 2)
+  S_0 <- diag(dims)
+  output <- ll_latent(sigma = 0.3, D, latent = theta) + # theta is 25 x 2
+    ll_prior(theta, M_0, S_0, dims) # prior for theta ~ MN(0, I, I)
+  return(output)
+}
+
+chain <- array(0, dim = c(maxIts, n, dims)) # array
+chain[1, , ] <- -10 # bad idea for a starting value
+# chain[1, , ]
+
+for(s in 2:maxIts) {
+  # sampling from proposal with mean coming from previous iteration
+  # domain of latent variable is Euclidean, unbounded
+  # browser()
+  thetaStar1 <- mvtnorm::rmvnorm(1, mean = chain[s - 1, , 1])
+  thetaStar2 <- mvtnorm::rmvnorm(1, mean = chain[s - 1, , 2])
+  thetaStar <- t(rbind(thetaStar1, thetaStar2))
+  # proposal: normal dist
+  u         <- runif(1)
+  # Metropolis, A = target(thetaStar)/target(previous iteration)
+  logA      <- target4(thetaStar) - target4(chain[s - 1, , ]) # target on log scale
+  
+  if(log(u) < logA) {
+    chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar
+  } else {
+    chain[s, , ] <- chain[s - 1, , ] # REJECT !! # next iteration stays at same iteration
+  }
+}
+
+plot(chain[, 1, 1], type = "l") # convergence to the mean of the prior distribution 
+plot(density(chain[, 1, 1])) 
+```
+Conclusion - results the same as original target function
+
+### Posterior Log-likelihood function
+
+```{r}
+# Lambda, diagonal matrix pxp with diagonal entries lambda
+# D_truth, matrix of true dissimilarity measures
+# D, matrix of observed dissimilarity measures
+# X, nxp , x_i is a row of X
+# beta vector from 1 to p
+
+# go function by function for likelihood, priors 
+# D_truth, distances between latent variables
+# ignore the X's for the likelihood
+
+bmds_ll <- function(n, a, sigma, Lambda, D_truth, D, X, b, beta){
+  c <- ((n * (n + 1)) / 2 + a + 1) * log(sigma) - b/sigma
+  lambda_term <- (n / 2) * sum(log(diag(Lambda)))
+  SSR_term <- (0.5 * sigma) * SSR(n, D_truth, D)
+  truth_term <- sum_norm(D_truth, sigma)
+  xVx = 0
+  for (i in 1:n){
+    xVx  <- xVx + t(X[i, ]) %*% Lambda %*% X[i, ] # constant 
+  }
+  beta_term <- sum(beta/diag(Lambda))
+  ll <- -(c + lambda_term + SSR_term + truth_term + xVx/2 + beta_term)
+  return(ll)
+}
+```
+
+
