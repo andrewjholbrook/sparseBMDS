@@ -20,25 +20,40 @@ library(invgamma)
 ### Supplementary functions for log-likelihood
 
 ```{r}
-SSR <- function(n, D_latent, D){
-  SSR_val = 0
-  for (i in 1:n){
-    for (j in 1:i){
-      SSR_val = SSR_val + (D[i, j] - D_latent[i, j])^2
-    }
-  }
-  return(SSR_val)
-}
+# SSR <- function(n, D_latent, D){
+#   SSR_val = 0
+#   for (i in 1:n){
+#     for (j in 1:i){
+#       SSR_val = SSR_val + (D[i, j] - D_latent[i, j])^2
+#     }
+#   }
+#   return(SSR_val)
+# }
 
-sum_norm <- function(n, D_latent, sigma){
+# sum_norm <- function(n, D_latent, sigma){
+#   logsum = 0
+#   for (i in 1:(n - 1)){
+#     for (j in (i + 1):n){ # D[i, i] included so taking pnorm(0) n times 
+#       stat = D_latent[i, j] / sqrt(sigma)
+#       logsum = logsum + log(pnorm(stat)) 
+#     }
+#   }
+#   #logsum = logsum - n * log(pnorm(0)) # subtract extra 0 part out 
+#   return(logsum)
+# }
+
+sum_terms <- function(n, D_latent, D, sigma){
+  SSR_val = 0
   logsum = 0
-  for (i in 1:n){
-    for (j in 1:i){
+  for (i in 1:(n - 1)){
+    for (j in (i + 1):n){
+      SSR_val = SSR_val + (D[i, j] - D_latent[i, j])^2
       stat = D_latent[i, j] / sqrt(sigma)
-      logsum = logsum + log(pnorm(stat)) 
+      logsum = logsum + log(pnorm(stat))
     }
   }
-  return(logsum)
+  r = SSR_val/(2 * sigma) + logsum
+  return(r)
 }
 ```
 
@@ -84,9 +99,11 @@ ll_latent <- function(sigma, D, latent){
   n <- dim(D_latent)[1]
   m <- n * (n - 1) / 2
   term1 <- (m / 2) * log(sigma)
-  term2 <- (1 / (2 * sigma)) * SSR(n, D_latent, D)
-  term3 <- sum_norm(n, D_latent, sigma)
-  loglik <- -(term1 + term2 + term3)
+  term2 <- sum_terms(n, D_latent, D, sigma)
+  #term2 <- (1 / (2 * sigma)) * SSR(n, D_latent, D) 
+  #term3 <- sum_norm(n, D_latent, sigma)
+  #loglik <- -(term1 + term2 + term3)
+  loglik <- -(term1 + term2)
   return(loglik)
 }
 ```
@@ -94,11 +111,17 @@ ll_latent <- function(sigma, D, latent){
 Sanity check, same log-likelihood as above
 ```{r}
 set.seed(12345)
-Z <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1)))
-D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
-Z_tilde <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
-ll_latent(sigma = 0.3, D, latent = Z)
-ll_latent(sigma = 0.3, D, latent = Z_tilde)
+set.seed(12345)
+Z_ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
+#Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
+D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+
+t <- proc.time()
+ll_latent(sigma = 0.3, D_ex, latent = Z_ex)
+proc.time() - t
+
+#ll_latent(sigma = 0.3, D_ex, latent = Z_tilde)
+
 ```
 
 - computer taking too long for 10,000 not feasible for log-likelihood 
@@ -742,6 +765,23 @@ coda::effectiveSize(dist_mat_mh2[-(1:burnin), 1:25, 10])
 
 Functions- 
 
+check if gradient derived matches the numerical gradient using R package
+
+```{r}
+target3 <- function(x){
+  target2(sigma = 0.3, theta = x)
+}
+
+set.seed(12345)
+Z_ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
+#Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
+D <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+
+matrix(numDeriv::grad(target3, x = Z_ex), nrow = 25, ncol = 2)
+
+grad(sigma = 0.3, D_ex, Z_ex)
+```
+
 ```{r}
 target <- function(theta) { # theta the latent variable; dims x 1 vector
   output <- ll_latent(sigma = 0.3, D, latent = theta) + 
@@ -775,7 +815,8 @@ grad <- function(sigma, D, latent) {
       if (i != j){
         stat = D_latent[i, j] / sqrt(sigma) # sigma = $\sigma^2$
         grad_1row[j, ] <- ((D_latent[i, j] - D[i, j]) / sigma +
-          dstat[i, j] / (sqrt(sigma) * pstat[i, j])) * ((latent[i, ] - latent[j, ])/ D_latent[i, j])
+          dstat[i, j] / (sqrt(sigma) * pstat[i, j])) * 
+          ((latent[i, ] - latent[j, ])/ D_latent[i, j])
       }
     }
     grad_ll[i, ] <- - colSums(grad_1row) - latent[i, ]
@@ -953,7 +994,7 @@ effective sample size, acf, effective sample size/ time (systemtime, look up onl
 
 ```{r}
 set.seed(12345)
-maxIts <- 100
+maxIts <- 1000
 dims <- 2
 n <- 25
 Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
@@ -966,7 +1007,7 @@ hmc_results <- hmc(dims, maxIts, stepSize = 0.01)
 
 ```{r}
 set.seed(12345)
-maxIts <- 100000
+maxIts <- 1000
 dims <- 2
 n <- 25
 Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
@@ -974,7 +1015,7 @@ D <- as.matrix(dist(Z, diag = TRUE, upper = TRUE))
 
 stimejhmc <- proc.time()
 joint_hmc_results <- hmc_joint(dims, maxIts, targetAccept = 0.65, targetAccept_Sigma = 0.5, 
-                               stepSize = 0.01, stepSizeSigma = 5)
+                               stepSize = 1, stepSizeSigma = 5)
 (timejhmc <- proc.time() - stimejhmc) #17997.06 
 ```
 

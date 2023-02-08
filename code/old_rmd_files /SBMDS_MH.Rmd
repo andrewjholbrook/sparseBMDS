@@ -1,5 +1,5 @@
 ---
-title: "Sparse BMDS Log-likelihood for Metropolis-Hastings"
+title: "Sparse BMDS Log-likelihood for Metropolis-Hasti"
 author: "Ami Sheth"
 date: "2022-09-08"
 output: html_document
@@ -23,8 +23,10 @@ library(gridExtra)
 
 ```{r}
 set.seed(12345)
-Z_ex <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1)))
+Z_ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
+Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
 D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+D_latent <- as.matrix(dist(Z_tilde, diag = TRUE, upper = TRUE))
 ```
 
 ```{r}
@@ -44,15 +46,41 @@ band
 
 ```{r}
 n <- dim(D_ex)[1]
-band <- matrix(NA, nrow = n - 1, ncol = 3)
-pad <- matrix(NA, nrow = n, ncol = 3)
-band_pad <- cbind(D_ex, pad)
-
-for (i in 1: n - 1){
-  band[i, ] <- band_pad[i, i + 1:3]
+band.no <- 25
+band_latent <- matrix(NA, nrow = n - 1, ncol = band.no)
+band_obs <- matrix(NA, nrow = n - 1, ncol = band.no)
+pad <- matrix(NA, nrow = n, ncol = band.no)
+D_latent_pad <- cbind(D_latent, pad)
+D_pad <- cbind(D_ex, pad)
+  
+for (i in 1:(n - 1)){
+  band_latent[i, ] <- D_latent_pad[i, i + 1:band.no]
+  band_obs[i, ] <- D_pad[i, i + 1:band.no]
 }
 
-band
+sum((band_obs - band_latent)^2, na.rm = TRUE) / (2 * 0.3) #+ 
+#sum(log(pnorm(band_latent / sqrt(0.3))), na.rm = TRUE)
+```
+
+
+```{r}
+n <- dim(D_ex)[1]
+bands <- 25
+band_lat <- matrix(NA, nrow = bands  , ncol = n)
+band_oup <- matrix(NA, nrow = bands  , ncol = n)
+
+pad <- matrix(NA, nrow = bands, ncol = n)
+band_pad <- rbind(pad, D_latent)
+obs_pad <- rbind(pad, D_ex)
+
+for (i in 1 : n){
+  band_lat[, i] <- band_pad[i + bands - bands:1, i]
+  band_oup[, i] <- obs_pad[i + bands - bands:1, i]
+}
+
+band_lat
+#sum((band_oup - band_lat)^2, na.rm = TRUE) / (2 * 0.3) #+ 
+#sum(log(pnorm(band_lat / sqrt(0.3))), na.rm = TRUE)
 ```
 
 ## Sparse log-likelihood
@@ -86,30 +114,53 @@ band
 # }
 ```
 
-2. padded with NAs, function of number of bands
+2. padded with NAs, function of number of bands - vectorized 
 
 ```{r}
 sum_r <- function(D_latent, D, sigma, band.no){
+  #D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
   n <- dim(D)[1]
   band_latent <- matrix(NA, nrow = n - 1, ncol = band.no)
   band_obs <- matrix(NA, nrow = n - 1, ncol = band.no)
   pad <- matrix(NA, nrow = n, ncol = band.no)
   D_latent_pad <- cbind(D_latent, pad)
   D_pad <- cbind(D, pad)
-  
+
   for (i in 1:(n - 1)){
     band_latent[i, ] <- D_latent_pad[i, i + 1:band.no]
     band_obs[i, ] <- D_pad[i, i + 1:band.no]
   }
-  
+
   SSR_val = (band_obs - band_latent)^2
   stat = band_latent / sqrt(sigma)
   logsum = log(pnorm(stat))
-  r = sum(SSR_val/(2 * sigma) + logsum, na.rm = TRUE)
+  r = sum(SSR_val/(2 * sigma), logsum, na.rm = TRUE)
   return(r)
 }
 ```
 
+3. function of the number of bands, coded with two for loops
+
+```{r}
+sum_r2 <- function(D_latent, D, sigma, band.no){
+  n <- dim(D)[1]
+  SSR_val = 0
+  logsum = 0
+  pad <- matrix(NA, nrow = n, ncol = band.no)
+  D_latent_pad <- cbind(D_latent, pad)
+  D_pad <- cbind(D, pad)
+  
+  for (i in 1:n){
+    for (j in 1:band.no){
+      SSR_val = sum(SSR_val, (D_pad[i, i + j] - D_latent_pad[i, i + j])^2, na.rm = TRUE)
+      stat = D_latent_pad[i, i + j] / sqrt(sigma)
+      logsum = sum(logsum, log(pnorm(stat)), na.rm = TRUE)
+    }
+  }
+  r = SSR_val/(2 * sigma) + logsum
+  return(r)
+}
+```
 
 ```{r}
 s_bmds_ll <- function(sigma, D, latent, band.no){ 
@@ -118,8 +169,18 @@ s_bmds_ll <- function(sigma, D, latent, band.no){
   n <- dim(D_latent)[1]
   m <- n * band.no - band.no * (band.no + 1) / 2  
   term1 <- (m / 2) * log(sigma)
-  #term2 <- sum_r(D_latent, D, sigma)
   term2 <- sum_r(D_latent, D, sigma, band.no)
+  loglik <- -(term1 + term2)
+  return(loglik)
+}
+
+s_bmds_ll2 <- function(sigma, D, latent, band.no){ 
+  # latent variables (nxk), observed distance matrix D (nxn), sigma^2
+  D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  n <- dim(D_latent)[1]
+  m <- n * band.no - band.no * (band.no + 1) / 2  
+  term1 <- (m / 2) * log(sigma)
+  term2 <- sum_r2(D_latent, D, sigma, band.no)
   loglik <- -(term1 + term2)
   return(loglik)
 }
@@ -129,19 +190,24 @@ s_bmds_ll <- function(sigma, D, latent, band.no){
 
 ```{r}
 set.seed(12345)
-Z_ex <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1)))
-Z_tilde <- mvrnorm(100, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
-
+Z_ex <- mvrnorm(200, mu = c(0,0), Sigma = diag(c(1, 1)))
+#Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
 D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
 
-s_bmds_ll(sigma = 0.3, D_ex, latent = Z_ex, band.no = 3)
-s_bmds_ll(sigma = 0.3, D_ex, latent = Z_tilde, band.no = 3)
+t <- proc.time()
+ll_latent(sigma = 0.3, D_ex, latent = Z_ex)
+proc.time() - t
+#ll_latent(sigma = 0.3, D_ex, latent = Z_tilde)
 
-#s_bmds_ll(sigma = 0.3, D_ex, latent = Z_ex)
-#s_bmds_ll(sigma = 0.3, D_ex, latent = Z_tilde)
+t <- proc.time()
+s_bmds_ll(sigma = 0.3, D_ex, latent = Z_ex, band.no = 200)
+proc.time() - t
+#s_bmds_ll(sigma = 0.3, D_ex, latent = Z_tilde, band.no = 25)
 
-# [1] 184.5232
-# [1] -693.3126
+t <- proc.time()
+s_bmds_ll2(sigma = 0.3, D_ex, latent = Z_ex, band.no = 200)
+proc.time() - t
+#s_bmds_ll2(sigma = 0.3, D_ex, latent = Z_tilde, band.no = 25)
 ```
 
 ## M-H with sparse likelihood
@@ -151,7 +217,7 @@ s_bmds_ll(sigma = 0.3, D_ex, latent = Z_tilde, band.no = 3)
 ```{r}
 # target function is the log-posterior which is proportional to log-likelihood + log-priors
 s_target <- function(theta, D) { # theta the latent variable; dims x 1 vector
-  output <- s_bmds_ll(sigma = 0.008, D, latent = theta, band.no = 3) + 
+  output <- s_bmds_ll(sigma = 0.3, D, latent = theta, band.no = 25) + 
     sum(mvtnorm::dmvnorm(theta, log = TRUE)) # independent, standard Gaussian prior for theta
   return(output)
 }
@@ -221,7 +287,7 @@ s_adapt_metropolis <- function(dims, maxIts, D,
 
 ```{r}
 set.seed(12345)
-maxIts <- 1000
+maxIts <- 100000
 dims <- 2
 n <- 25
 Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
@@ -235,7 +301,7 @@ s_adapt_results <- s_adapt_metropolis(dims, maxIts, D = D.1, targetAccept = 0.65
 ```{r}
 # target function is the log-posterior which is proportional to log-likelihood + log-priors
 s_target2 <- function(sigma, theta, band.no, D) { # theta the latent variable; dims x 1 vector
-  output <- s_bmds_ll(sigma, D, latent = theta, band.no) + 
+  output <- s_bmds_ll2(sigma, D, latent = theta, band.no) + 
     sum(mvtnorm::dmvnorm(theta, log = TRUE)) + # independent, standard Gaussian prior for theta
     dinvgamma(sigma, shape = 1, rate = 1, log = TRUE) # inverse-gamma prior for sigma
   return(output)
@@ -349,22 +415,31 @@ s_adapt_metropolis2 <- function(dims, maxIts, D, band.no = 3,
 
 ```{r}
 set.seed(12345)
-maxIts <- 1000
-dims <- 2
-n <- 25
-Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+#maxIts <- 1000
+#dims <- 2
+#n <- 200
+Z <- mvtnorm::rmvnorm(25, mean = rep(0, 2), sigma = diag(c(1, 1))) # dims = 2, n = 25
 D.1 <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+band_opt <- c(25)#c(5, 10, 50, 100, 150, 200)
+timesmh <- c()
 
-s_adapt_results2 <- s_adapt_metropolis2(dims, maxIts, band.no = 3, D = D.1, 
+for (i in 1:length(band_opt)){
+  stimesmh <- proc.time()
+  s_adapt_results2 <- s_adapt_metropolis2(dims = 2, maxIts = 100000, band.no = band_opt[i], D = D.1, 
                                         targetAccept = 0.65, 
                                         targetAccept_Sigma = 0.5,
                                         stepSize = 1, stepSizeSigma = 1)
+  time <- proc.time() - stimesmh
+  timesmh[i] <- time[3]
+}
+ 
+timesmh
 ```
 
 1. graphs for (1)
 
 ```{r}
-burnin <- 1
+burnin <- 30000
 plot(s_adapt_results[-(1:burnin), 1, 1], type = "l") # first latent variable, first dimension
 
 # traceplot when target function evaluated at thetas 
@@ -448,15 +523,16 @@ coda::effectiveSize(s_dist_mat_mh[-(1:burnin), 1:25, 10])
 
 2. graphs for (2)
 ```{r}
-burnin <- 1
+maxIts <- 100000
+burnin <- 30000
 plot(s_adapt_results2[[2]][-(1:burnin), 1, 1], type = "l") # first latent variable, first dimension
 plot(s_adapt_results2[[1]][-(1:burnin)], type = "l") # sigmas
 
 # traceplot when target function evaluated at thetas 
 s_target_chain_mh2 <- c()
 for (i in 1:maxIts){
-  s_target_chain_mh2[i] <- s_target2(s_adapt_results2[[1]][i], s_adapt_results2[[2]][i, , ], band.no = 3, 
-                                     D = D.1)
+  s_target_chain_mh2[i] <- s_target2(s_adapt_results2[[1]][i], s_adapt_results2[[2]][i, , ], 
+                                     band.no = 25, D = D.1)
 }
 
 plot(s_target_chain_mh2[-(1:burnin)], type = "l")
@@ -476,14 +552,15 @@ comparing across distances
 
 ```{r}
 par(mfrow=c(2,2))
-for (z in 1:n){
+for (z in 1:25){
   for (y in 1:z){
+    if (y != z){
     plot(s_dist_mat_mh2[-(1:burnin), z, y], type = "l", ylab = paste("Distance", z, "with", y))
     abline(h = D.1[z, y], col = "red")
+    }
   }
 }
 ```
-
 
 ## capture MSE as a function of the number of bands
 
@@ -522,54 +599,6 @@ for (r in 1:length(samp)){
 mse_band
 ```
 
-```{r}
-set.seed(12345)
-maxIts <- 100000
-dims <- 2
-n <- 25
-Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
-D.1 <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-
-s_adapt_results3 <- s_adapt_metropolis2(dims, maxIts, band.no = 6, D = D.1, targetAccept = 0.65, 
-                                    targetAccept_Sigma = 0.5,
-                                    stepSize = 1, stepSizeSigma = 1)
-```
-
-```{r}
-burnin <- 30000
-plot(s_adapt_results3[[2]][-(1:burnin), 1, 1], type = "l") # first latent variable, first dimension
-plot(s_adapt_results3[[1]][-(1:burnin)], type = "l") # sigmas
-
-# traceplot when target function evaluated at thetas 
-s_target_chain_mh3 <- c()
-for (i in 1:maxIts){
-  s_target_chain_mh3[i] <- s_target2(s_adapt_results3[[1]][i], 
-                                     s_adapt_results3[[2]][i, , ], band.no = 6, 
-                                     D = D.1)
-}
-
-plot(s_target_chain_mh3[-(1:burnin)], type = "l")
-#abline(h = target(Z), col = "red")
-plot(density(s_target_chain_mh3[-(1:burnin)])) 
-acf(s_target_chain_mh3[-(1:burnin)])
-coda::effectiveSize(s_target_chain_mh3[-(1:burnin)])
-
-# traceplot for pairwise distances
-s_dist_mat_mh3 <- array(0, dim = c(maxIts, n, n))
-for (i in 1:maxIts){
-  s_dist_mat_mh3[i, , ] <- as.matrix(dist(s_adapt_results3[[2]][i, , ], diag = TRUE, upper = TRUE))
-}
-```
-```{r}
-par(mfrow=c(2,2))
-for (z in 1:n){
-  for (y in 1:z){
-    plot(s_dist_mat_mh3[-(1:burnin), z, y], type = "l", ylab = paste("Distance", z, "with", y))
-    abline(h = D.1[z, y], col = "red")
-  }
-}
-```
-
 ### adding noise to observed distance matrix - error added to each element in distance matrix 
 
 ```{r}
@@ -586,7 +615,8 @@ for (r in 1:length(samp)){
   n <- samp[r]
   Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
   D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-  noise <- matrix(rexp(n^2, rate = 1), n, n) # mean = 1 # increasing magnitude of noise
+  #noise <- matrix(rexp(n^2, rate = 1), n, n) # mean = 1 # increasing magnitude of noise
+  noise <- matrix(rtruncnorm(n^2, mean = 0, sd = 2), n, n) 
   noise <- (noise + t(noise)) / 2
   diag(noise) <- 0
   D.noise <- noise + D.sim
@@ -598,7 +628,7 @@ for (r in 1:length(samp)){
       error[t] <- mean((as.matrix(dist(sim[[2]][t, , ], diag = TRUE, upper = TRUE)) - D.noise)^2)
     }
     mse_band2[s, r] <- mean(error[-(1:burnin)])
-    sigma.sim2[s, r] <- mean(sim[[1]][-(1:burnin)])
+    sigma.sim2[s, r] <- mean(sim[[1]][-(1:burnin)]) # try mode next time
   }
 }
 ```
@@ -610,6 +640,7 @@ for (r in 1:length(samp)){
        xlim = c(0, samp[r]))
 }
 ```
+
 conclusion need more bands when adding error 
 
 ```{r}
@@ -622,37 +653,30 @@ for (r in 1:length(samp)){
 sigma.sim2
 ```
 
-larger error - mean of error = 2
-
 ```{r}
 set.seed(12345)
 maxIts <- 100000
-burnin <- 30000
 dims <- 2
-samp <- c(10, 15, 20, 25, 30)
+n <- 25
+Z <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+D.1 <- as.matrix(dist(Z, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+noise <- matrix(rtruncnorm(n^2, mean = 0, sd = 3), n, n) 
+# increasing magnitude of noise
+noise <- (noise + t(noise)) / 2
+diag(noise) <- 0
+D.noise <- noise + D.1
 
-#mse_band <- array(0, dim = c(samp, 2)) # row, column, number of the matrix
-mse_band3 <- matrix(NA, nrow = max(samp), ncol = length(samp))
-sigma.sim3 <- matrix(NA, nrow = max(samp), ncol = length(samp))
-for (r in 1:length(samp)){
-  n <- samp[r]
-  Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
-  D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-  noise <- matrix(rexp(n^2, rate = 0.5), n, n) # mean = 1 # increasing magnitude of noise
-  noise <- (noise + t(noise)) / 2
-  diag(noise) <- 0
-  D.noise <- noise + D.sim
-  for (s in 1:n){
-    sim <- s_adapt_metropolis2(dims, maxIts, band.no = s, targetAccept = 0.65, D = D.noise,
-                               targetAccept_Sigma = 0.5, stepSize = 1, stepSizeSigma = 1)
-    error <- c()
-    for (t in 1:maxIts){
-      error[t] <- mean((as.matrix(dist(sim[[2]][t, , ], diag = TRUE, upper = TRUE)) - D.noise)^2)
-    }
-    mse_band3[s, r] <- mean(error[-(1:burnin)])
-    sigma.sim3[s, r] <- mean(sim[[1]][-(1:burnin)])
-  }
-}
+s_adapt_results3 <- s_adapt_metropolis2(dims, maxIts, band.no = 25, D = D.noise, 
+                                        targetAccept = 0.65, 
+                                        targetAccept_Sigma = 0.5,
+                                        stepSize = 1, stepSizeSigma = 1)
+```
+
+```{r}
+plot(s_adapt_results3[[1]][-(1:30000)], type = "l")
+quantile(s_adapt_results3[[1]][-(1:30000)], probs = .025)  # posterior mean = 0.428
+quantile(s_adapt_results3[[1]][-(1:30000)], probs = .975)
+coda::effectiveSize(s_adapt_results3[[1]][-(1:30000)])
 ```
 
 ### error graph
@@ -683,16 +707,27 @@ sim_errorpct <- function(pct, dims, size, maxIts, band.no, targetAccept, data,
 
 data simulation
 ```{r}
-x <- rep(seq(-1, 1, by = .5), 5)
-y <- c(rep(1, 5), rep(-0.5, 5), rep(0, 5), rep(0.5, 5), rep(1, 5))
-color <- rep(c("blue", "green", "yellow", "orange", "red"), 5)
-data_test <- tibble(x, y, color)
+set.seed(12345)
 
+l <- rep(c("blue", "green", "yellow", "orange", "red"), 5)
+
+data_test <- tibble(x = rep(seq(-1, 1, by = .5), 5),
+                    y = c(rep(-1, 5), rep(-.5, 5), rep(0, 5), rep(.5, 5), rep(1, 5)),
+                    color = l)
 dist_test <- as.matrix(dist(data_test[, 1:2], diag = TRUE, upper = TRUE))
 
-# data_test
-ggplot(data = data_test) + 
-  geom_point(aes(x, y), color = color)
+# permuting items of the data
+data_test2 <- data_test[sample(nrow(data_test)), ]
+dist_test2 <- as.matrix(dist(data_test2[, 1:2], diag = TRUE, upper = TRUE))
+
+#dist_test2 <- dist_test[sample(nrow(dist_test)), sample(ncol(dist_test))]
+
+# data_test - both datasets yield the same grid (as expected)
+ggplot(data = data_test, aes(x, y, color = color)) +
+  geom_point() + theme(legend.position = "none")
+
+ggplot(data = data_test2, aes(x, y, color = color)) +
+  geom_point() + theme(legend.position = "none")
 ```
 
 ```{r}
@@ -700,7 +735,7 @@ set.seed(12345)
 noise_pct <- c(0, 2, 5, 10)
 sim_band25 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
                            maxIts = 100000, band.no = 25, 
-                           targetAccept = 0.65, data = dist_test, 
+                           targetAccept = 0.65, data = dist_test2, 
                            targetAccept_Sigma = 0.5, stepSize = 1, 
                            stepSizeSigma = 1)
 ```
@@ -709,7 +744,25 @@ sim_band25 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25,
 set.seed(12345)
 sim_band10 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
                            maxIts = 100000, band.no = 10, 
-                           targetAccept = 0.65, data = dist_test, 
+                           targetAccept = 0.65, data = dist_test2, 
+                           targetAccept_Sigma = 0.5, stepSize = 1, 
+                           stepSizeSigma = 1)
+```
+
+```{r}
+# set.seed(12345)
+# sim_band9 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
+#                            maxIts = 100000, band.no = 9, 
+#                            targetAccept = 0.65, data = dist_test, 
+#                            targetAccept_Sigma = 0.5, stepSize = 1, 
+#                            stepSizeSigma = 1)
+```
+
+```{r}
+set.seed(12345)
+sim_band8 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
+                           maxIts = 100000, band.no = 8, 
+                           targetAccept = 0.65, data = dist_test2, 
                            targetAccept_Sigma = 0.5, stepSize = 1, 
                            stepSizeSigma = 1)
 ```
@@ -718,7 +771,7 @@ sim_band10 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25,
 set.seed(12345)
 sim_band6 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
                            maxIts = 100000, band.no = 6, 
-                           targetAccept = 0.65, data = dist_test, 
+                           targetAccept = 0.65, data = dist_test2, 
                            targetAccept_Sigma = 0.5, stepSize = 1, 
                            stepSizeSigma = 1)
 ```
@@ -727,138 +780,247 @@ sim_band6 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25,
 set.seed(12345)
 sim_band3 <- sim_errorpct(pct = noise_pct, dims = 2, size = 25, 
                            maxIts = 100000, band.no = 3, 
-                           targetAccept = 0.65, data = dist_test, 
+                           targetAccept = 0.65, data = dist_test2, 
                            targetAccept_Sigma = 0.5, stepSize = 1, 
                            stepSizeSigma = 1)
 ```
 
 ```{r}
-theme_update(plot.title = element_text(hjust = 0.5, size = rel(.75)))
+theme_update(plot.title = element_text(hjust = 0.5, size = rel(.75)),
+             legend.position = "none")
 
 # 25 bands 
-g1.25 <- ggplot(data = tibble(x.sim = sim_band25[1, , 1], y.sim = sim_band25[1, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g1.25 <- ggplot(data = tibble(x.sim = sim_band25[1, , 1], y.sim = sim_band25[1, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("25 bands \n", noise_pct[1], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 2), ylim = c(-1.5, 1.5))
 
-g2.25 <- ggplot(data = tibble(x.sim = sim_band25[2, , 1], y.sim = sim_band25[2, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g2.25 <- ggplot(data = tibble(x.sim = sim_band25[2, , 1], y.sim = sim_band25[2, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("25 bands \n", noise_pct[2], "% noise"),
          x = "",
          y = "") + 
-coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.75, 1.5))
 
-g3.25 <- ggplot(data = tibble(x.sim = sim_band25[3, , 1], y.sim = sim_band25[3, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g3.25 <- ggplot(data = tibble(x.sim = sim_band25[3, , 1], y.sim = sim_band25[3, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("25 bands \n", noise_pct[3], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g4.25 <- ggplot(data = tibble(x.sim = sim_band25[4, , 1], y.sim = sim_band25[4, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g4.25 <- ggplot(data = tibble(x.sim = sim_band25[4, , 1], y.sim = sim_band25[4, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("25 bands \n", noise_pct[4], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
 # 10 bands
 
-g1.10 <- ggplot(data = tibble(x.sim = sim_band10[1, , 1], y.sim = sim_band10[1, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g1.10 <- ggplot(data = tibble(x.sim = sim_band10[1, , 1], y.sim = sim_band10[1, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
     labs(title = paste("10 bands \n", noise_pct[1], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g2.10 <- ggplot(data = tibble(x.sim = sim_band10[2, , 1], y.sim = sim_band10[2, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g2.10 <- ggplot(data = tibble(x.sim = sim_band10[2, , 1], y.sim = sim_band10[2, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("10 bands \n", noise_pct[2], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.7, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g3.10 <- ggplot(data = tibble(x.sim = sim_band10[3, , 1], y.sim = sim_band10[3, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g3.10 <- ggplot(data = tibble(x.sim = sim_band10[3, , 1], y.sim = sim_band10[3, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("10 bands \n", noise_pct[3], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g4.10 <- ggplot(data = tibble(x.sim = sim_band10[4, , 1], y.sim = sim_band10[4, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g4.10 <- ggplot(data = tibble(x.sim = sim_band10[4, , 1], y.sim = sim_band10[4, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("10 bands \n", noise_pct[4], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.7))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+# 9 bands
+
+# g1.9 <- ggplot(data = tibble(x.sim = sim_band9[1, , 1], y.sim = sim_band9[1, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#     labs(title = paste("9 bands \n", noise_pct[1], "% noise"),
+#          x = "",
+#          y = "") + 
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+# 
+# g2.9 <- ggplot(data = tibble(x.sim = sim_band9[2, , 1], y.sim = sim_band9[2, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("9 bands \n", noise_pct[2], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# 
+# 
+# g3.9 <- ggplot(data = tibble(x.sim = sim_band9[3, , 1], y.sim = sim_band9[3, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("9 bands \n", noise_pct[3], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# 
+# 
+# g4.9 <- ggplot(data = tibble(x.sim = sim_band9[4, , 1], y.sim = sim_band9[4, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("9 bands \n", noise_pct[4], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+# 8 bands
+
+# g1.8 <- ggplot(data = tibble(x.sim = sim_band8[1, , 1], y.sim = sim_band8[1, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#     labs(title = paste("8 bands \n", noise_pct[1], "% noise"),
+#          x = "",
+#          y = "") + 
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+# 
+# g2.8 <- ggplot(data = tibble(x.sim = sim_band8[2, , 1], y.sim = sim_band8[2, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("8 bands \n", noise_pct[2], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# 
+# 
+# g3.8 <- ggplot(data = tibble(x.sim = sim_band8[3, , 1], y.sim = sim_band8[3, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("8 bands \n", noise_pct[3], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# 
+# 
+# g4.8 <- ggplot(data = tibble(x.sim = sim_band8[4, , 1], y.sim = sim_band8[4, , 2])) + 
+#   geom_point(aes(x.sim, y.sim), color = color) + 
+#   labs(title = paste("8 bands \n", noise_pct[4], "% noise"),
+#          x = "",
+#          y = "") + 
+#   #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+#   coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
 
 # 6 bands
 
-g1.6 <- ggplot(data = tibble(x.sim = sim_band6[1, , 1], y.sim = sim_band6[1, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g1.6 <- ggplot(data = tibble(x.sim = sim_band6[1, , 1], y.sim = sim_band6[1, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
     labs(title = paste("6 bands \n", noise_pct[1], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
 
-g2.6 <- ggplot(data = tibble(x.sim = sim_band6[2, , 1], y.sim = sim_band6[2, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g2.6 <- ggplot(data = tibble(x.sim = sim_band6[2, , 1], y.sim = sim_band6[2, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("6 bands \n", noise_pct[2], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g3.6 <- ggplot(data = tibble(x.sim = sim_band6[3, , 1], y.sim = sim_band6[3, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+
+g3.6 <- ggplot(data = tibble(x.sim = sim_band6[3, , 1], y.sim = sim_band6[3, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("6 bands \n", noise_pct[3], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g4.6 <- ggplot(data = tibble(x.sim = sim_band6[4, , 1], y.sim = sim_band6[4, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+
+g4.6 <- ggplot(data = tibble(x.sim = sim_band6[4, , 1], y.sim = sim_band6[4, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("6 bands \n", noise_pct[4], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
 
 # 3 bands
 
-g1.3 <- ggplot(data = tibble(x.sim = sim_band3[1, , 1], y.sim = sim_band3[1, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g1.3 <- ggplot(data = tibble(x.sim = sim_band3[1, , 1], y.sim = sim_band3[1, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
     labs(title = paste("3 bands \n", noise_pct[1], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
 
-g2.3 <- ggplot(data = tibble(x.sim = sim_band3[2, , 1], y.sim = sim_band3[2, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g2.3 <- ggplot(data = tibble(x.sim = sim_band3[2, , 1], y.sim = sim_band3[2, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("3 bands \n", noise_pct[2], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.7))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.7))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g3.3 <- ggplot(data = tibble(x.sim = sim_band3[3, , 1], y.sim = sim_band3[3, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g3.3 <- ggplot(data = tibble(x.sim = sim_band3[3, , 1], y.sim = sim_band3[3, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("3 bands \n", noise_pct[3], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
-g4.3 <- ggplot(data = tibble(x.sim = sim_band3[4, , 1], y.sim = sim_band3[4, , 2])) + 
-  geom_point(aes(x.sim, y.sim), color = color) + 
+g4.3 <- ggplot(data = tibble(x.sim = sim_band3[4, , 1], y.sim = sim_band3[4, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
   labs(title = paste("3 bands \n", noise_pct[4], "% noise"),
          x = "",
          y = "") + 
-  coord_fixed(ratio = 1, xlim = c(-1.7, 1.5), ylim = c(-1.5, 1.5))
+  #coord_fixed(ratio = 1, xlim = c(-1.7, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
 
 grid.arrange(g1.25, g2.25, g3.25, g4.25,
              g1.10, g2.10, g3.10, g4.10, nrow = 2, ncol = 4)
+
+#grid.arrange(g1.9, g2.9, g3.9, g4.9,
+#             g1.8, g2.8, g3.8, g4.8, nrow = 2, ncol = 4)
 
 grid.arrange(g1.6, g2.6, g3.6, g4.6, 
              g1.3, g2.3, g3.3, g4.3, nrow = 2, ncol = 4)
 
 # orientation keeps changing 
 ```
+
+
+

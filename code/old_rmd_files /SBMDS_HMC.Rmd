@@ -1,0 +1,676 @@
+---
+title: "SBMDS_HMC"
+output: html_document
+date: "2022-10-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+import libraries 
+
+```{r}
+library(Matrix)
+library(mvtnorm)
+library(MASS)
+library(invgamma)
+library(truncnorm)
+library(tidyverse)
+library(gridExtra)
+```
+
+### Sparse likelihood
+
+```{r}
+sum_r <- function(D_latent, D, sigma, band.no){
+  #D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  n <- dim(D)[1]
+  band_latent <- matrix(NA, nrow = n - 1, ncol = band.no)
+  band_obs <- matrix(NA, nrow = n - 1, ncol = band.no)
+  pad <- matrix(NA, nrow = n, ncol = band.no)
+  D_latent_pad <- cbind(D_latent, pad)
+  D_pad <- cbind(D, pad)
+
+  for (i in 1:(n - 1)){
+    band_latent[i, ] <- D_latent_pad[i, i + 1:band.no]
+    band_obs[i, ] <- D_pad[i, i + 1:band.no]
+  }
+
+  SSR_val = (band_obs - band_latent)^2
+  #browser()
+  stat = band_latent / sqrt(sigma)
+  logsum = log(pnorm(stat))
+  r = sum(SSR_val/(2 * sigma) + logsum, na.rm = TRUE)
+  return(r)
+}
+
+s_bmds_ll <- function(sigma, D, latent, band.no){ 
+  # latent variables (nxk), observed distance matrix D (nxn), sigma^2
+  D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  n <- dim(D_latent)[1]
+  m <- n * band.no - band.no * (band.no + 1) / 2  
+  term1 <- (m / 2) * log(sigma)
+  term2 <- sum_r(D_latent, D, sigma, band.no)
+  loglik <- -(term1 + term2)
+  return(loglik)
+}
+```
+
+### target and gradient function
+
+```{r}
+s_target2 <- function(sigma, theta, band.no, D) { # theta the latent variable; dims x 1 vector
+  output <- s_bmds_ll(sigma, D, latent = theta, band.no) + # sparse log-likelihood 
+    sum(mvtnorm::dmvnorm(theta, log = TRUE)) + # independent, standard Gaussian prior for theta
+    dinvgamma(sigma, shape = 1, rate = 1, log = TRUE) # inverse-gamma prior for sigma
+  return(output)
+}
+
+delta <- function(n) {
+  return(min(0.01, n^(-0.5)))
+}
+```
+
+experimenting outside of a function- 
+
+```{r}
+# set.seed(12345)
+# latent <- mvtnorm::rmvnorm(5, mean = rep(0, 2), sigma = diag(c(1, 1)))
+# D <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+# D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+# n <- dim(D)[1]
+# band.no <- 5
+# sigma <- 0.3
+# band_latent <- matrix(NA, nrow = n - 1, ncol = band.no)
+# band_obs <- matrix(NA, nrow = n - 1, ncol = band.no)
+# pad <- matrix(NA, nrow = n, ncol = band.no)
+# pad2 <- matrix(NA, nrow = band.no, ncol = 2)
+# 
+# D_latent_spad <- cbind(D_latent, pad)
+# D_spad <- cbind(D, pad)
+# D_latent_upad <- rbind(t(pad), D_latent)
+# D_upad <- rbind(t(pad), D)
+# latent_pad <- rbind(latent, pad2)
+# latent_upad <- rbind(pad2, latent)
+# 
+# grad_ll <- matrix(0, nrow = n, ncol = 2) # 25x2
+# for (i in 1:n){
+#   step3.a <- matrix(0, nrow = band.no, ncol = 2)
+#   step3.b <- matrix(0, nrow = band.no, ncol = 2)
+#   for (j in 1:band.no){
+# 
+#     # accounting for couplings to the right of d_ii
+#     stat1 <- (D_latent_spad[i, i + j]) / sqrt(sigma)
+#     step1.a <- (D_latent_spad[i, i + j] - D_spad[i, i + j]) / sigma
+#     #print(step1.a)
+#     step2.a <- dnorm(stat1) / (sqrt(sigma) * pnorm(stat1))
+#     step3.a[j, ] <- (step1.a + step2.a) *
+#       ((latent_pad[i, ] - latent_pad[i + j, ]) / D_latent_spad[i, i + j])
+# 
+#     # accounting for couplings above d_ii
+#     stat2 <- D_latent_upad[i + band.no - j, i] / sqrt(sigma)
+#     step1.b <- (D_latent_upad[i + band.no - j, i] - D_upad[i + band.no - j, i]) / sigma
+#     step2.b <- dnorm(stat2) / (sqrt(sigma) * pnorm(stat2))
+#     step3.b[j, ] <- (step1.b + step2.b) *
+#       ((latent_pad[i, ] - latent_upad[i + band.no - j, ]) / D_latent_upad[i + band.no - j, i])
+#   }
+# 
+#   # combine both types of couplings
+#   step3 <- rbind(step3.a, step3.b)
+#   grad_ll[i, ] <- - colSums(step3, na.rm = TRUE) - latent_pad[i, ]
+# }
+# 
+# grad_ll
+```
+
+gradient as a function
+
+```{r}
+s_grad <- function(sigma, D, latent, band.no) {
+  # padding to prevent errors
+  dims <- dim(latent)[2]
+  n <- dim(latent)[1]
+  D_latent <- as.matrix(dist(latent, diag = TRUE, upper = TRUE))
+  
+  pad <- matrix(NA, nrow = n, ncol = band.no) # add padding column-wise
+  pad2 <- matrix(NA, nrow = band.no, ncol = dims) # add padding row-wise
+  
+  D_latent_spad <- cbind(D_latent, pad) # padding to the right of dist matrix
+  D_spad <- cbind(D, pad)
+  
+  D_latent_upad <- rbind(t(pad), D_latent) # padding above dist matrix 
+  D_upad <- rbind(t(pad), D)
+  
+  latent_pad <- rbind(latent, pad2) # padding below latent variables
+  latent_upad <- rbind(pad2, latent) # padding above latent variables 
+
+  grad_sll <- matrix(NA, nrow = n, ncol = dims)
+  
+  for (i in 1:n){
+    step3 <- matrix(0, nrow = 2 * band.no, ncol = dims)
+    #step3.a <- matrix(0, nrow = band.no, ncol = dims)
+    #step3.b <- matrix(0, nrow = band.no, ncol = dims)
+    for (j in 1:band.no){
+      
+      # accounting for couplings to the right of d_ii
+      stat1 <- (D_latent_spad[i, i + j]) / sqrt(sigma) 
+      step1.a <- (D_latent_spad[i, i + j] - D_spad[i, i + j]) / sigma 
+      step2.a <- dnorm(stat1) / (sqrt(sigma) * pnorm(stat1))
+      step3[j, ] <- (step1.a + step2.a) * 
+        ((latent_pad[i, ] - latent_pad[i + j, ]) / D_latent_spad[i, i + j])
+      
+      # accounting for couplings above d_ii
+      stat2 <- D_latent_upad[i + band.no - j, i] / sqrt(sigma)
+      step1.b <- (D_latent_upad[i + band.no - j, i] - D_upad[i + band.no - j, i]) / sigma
+      step2.b <- dnorm(stat2) / (sqrt(sigma) * pnorm(stat2))
+      step3[j + band.no, ] <- (step1.b + step2.b) * 
+        ((latent_pad[i, ] - latent_upad[i + band.no - j, ]) / D_latent_upad[i + band.no - j, i])
+    }
+    
+    # combine both types of couplings 
+    #step3 <- rbind(step3.a, step3.b)
+    grad_sll[i, ] <- - colSums(step3, na.rm = TRUE) - latent_pad[i, ]
+  }
+  return(grad_sll)
+}
+```
+
+```{r}
+set.seed(12345)
+Z_ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
+#Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
+D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+
+
+sum_r(D_ex, D_ex, sigma = 0.3, band.no = 2)
+s_grad(sigma = 0.3, D = D_ex, latent = Z_ex, band.no = 25)
+```
+
+check if gradient is correct: numerical methods
+
+```{r}
+s_target3 <- function(x){
+  s_target2(sigma = 0.3, theta = x, band.n = 25, D = D_ex)
+}
+
+# when band 25, this matches gradient value obtained using numerical methods for full likelihood 
+grad_nderiv <- matrix(numDeriv::grad(s_target3, x = Z_ex), nrow = 25, ncol = 2)
+grad_nderiv
+```
+
+### function to run joint HMC
+
+```{r}
+sparse_hmc <- function(n, dims, maxIts, band.no, D, stepSize = 1, 
+                       stepSizeSigma = 1, targetAccept = 0.65, 
+                       targetAccept_Sigma = 0.5) {
+  
+  # initialization for latent variable
+  chain <- array(0, dim = c(maxIts, n, dims))
+  acceptances <- 0
+  totalaccept <- rep(0, maxIts)
+  SampCount <- 0
+  SampBound <- 50   # current total samples before adapting radius
+  
+  # initialization for sigma
+  sigma_chain <- rep(0, maxIts)
+  totalaccept_Sigma <- rep(0, maxIts)
+  acceptances_Sigma <- 0
+  SampCount_Sigma <- 0
+  
+  L <- 20 # number of leapfrog steps
+  
+  # random starting point for latent variables and sigma
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+  sigma_chain[1] <- 1
+  currentU <- - s_target2(sigma_chain[1], chain[1, , ], band.no, D) # U(q0) = - log posterior 
+  
+  for (i in 2:maxIts) {
+    ####### update for latent variables - HMC
+    proposalState <- chain[i - 1, , ] # q0
+    momentum <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims)) # p0
+    currentK <- sum(momentum^2)/2 # valid bc independence; dimension K(p0)
+    
+    # leapfrog steps - obtain qt and pt 
+    momentum <- momentum + 
+      0.5 * stepSize * s_grad(sigma_chain[i - 1], D, proposalState, band.no) # half-step 
+    
+    for (l in 1:L) { # full step for p and q unless end of trajectory
+      proposalState <- proposalState + stepSize * momentum # qt
+      if (l != L) momentum <- momentum + 
+          stepSize * s_grad(sigma_chain[i - 1], D, proposalState, band.no)
+    }
+
+    momentum <- momentum + 
+      0.5 * stepSize * s_grad(sigma_chain[i - 1], D, proposalState, band.no) # half-step
+    
+    # quantities for accept/reject
+    proposedU = - s_target2(sigma_chain[i - 1], proposalState, band.no, D) # U(qt)
+    proposedK = sum(momentum^2)/2 # K(pt)
+    u <- runif(1)
+    
+    if (log(u) < currentU - proposedU + currentK - proposedK) {
+      chain[i, , ] <- proposalState # move pt to be p0 now
+      currentU <- proposedU # update U(p0)
+      totalaccept[i] <- 1
+      acceptances <- acceptances + 1
+    } else {
+      chain[i, , ] <- chain[i - 1, , ] # keep p0 
+    }
+    
+    ####### update for sigma - adaptive Metropolis 
+    
+    # proposal distribution for sigma
+    sigmaStar <- rtruncnorm(1, a = 0, b = Inf, mean = sigma_chain[i - 1], 
+                            sd = stepSizeSigma) 
+    # comparing new and old sigma with current chain, not a symmetric proposal 
+    logA2 <- s_target2(sigmaStar, chain[i, , ], band.no, D) + proposedU +  
+      # target(sigma_chain[i - 1], chain[i, , ]) + 
+      log(truncnorm::dtruncnorm(x = sigma_chain[i - 1], a = 0, 
+                                    mean = sigmaStar, sd = stepSizeSigma)) - 
+      log(truncnorm::dtruncnorm(x = sigmaStar, a = 0, 
+                                    mean = sigma_chain[i - 1], sd = stepSizeSigma)) 
+    
+    u2 <- runif(1)
+    if(log(u2) < logA2) {
+      sigma_chain[i] <- sigmaStar
+      totalaccept_Sigma[i] <- 1
+      acceptances_Sigma <- acceptances_Sigma + 1
+    } else {
+      sigma_chain[i] <- sigma_chain[i - 1]
+    }
+
+    # adaptive stepsize for latent variables
+    SampCount <- SampCount + 1
+    
+    if (SampCount == SampBound) { 
+      acceptRatio <- acceptances / SampBound
+      if (acceptRatio > targetAccept) {
+        stepSize <- stepSize * (1 + delta(i - 1)) # increase stepsize 
+      } else {
+        stepSize <- stepSize * (1 - delta(i - 1)) # decrease stepsize
+      }
+      
+      # reset Sampcount and Acceptances
+      SampCount <- 0
+      acceptances <- 0
+    }
+    
+    # adaptive stepsize for sigma
+    SampCount_Sigma <- SampCount_Sigma + 1
+    
+    if (SampCount_Sigma == SampBound) { 
+      acceptRatio_Sigma <- acceptances_Sigma / SampBound
+      if (acceptRatio_Sigma > targetAccept_Sigma) {
+        stepSizeSigma <- stepSizeSigma * (1 + delta(i - 1)) # increase stepsize 
+      } else {
+        stepSizeSigma <- stepSizeSigma * (1 - delta(i - 1)) # decrease stepsize
+      }
+      
+      # reset SampCount and Acceptances
+      SampCount_Sigma <- 0
+      acceptances_Sigma <- 0
+    }
+    
+    if (i %% 100 == 0) cat("Iteration ", i, "\n","stepSize: ", stepSize, "\n",
+                           "stepSizeSigma: ", stepSizeSigma, "\n") 
+  }
+  
+  cat("Acceptance rate: ", sum(totalaccept)/(maxIts - 1), 
+      "Acceptance rate sigma: ", sum(totalaccept_Sigma)/(maxIts - 1))
+
+  return(list(sigma_chain, chain))
+}
+```
+
+```{r}
+set.seed(12345)
+Z_ex <- mvrnorm(200, mu = c(0,0), Sigma = diag(c(1, 1)))
+#Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
+D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+band_opt <- c(5, 10, 50, 100, 150, 200)
+#band_opt <- c(5, 10, 15, 25)
+timeshmc <- c()
+
+for (i in 1:length(band_opt)){
+
+  stimeshmc <- proc.time()
+  s_hmc_results <- sparse_hmc(n = 200, dims = 2, maxIts = 1000, band.no = band_opt[i],
+                              D = D_ex, stepSize = 1, stepSizeSigma = 1, 
+                              targetAccept = 0.65, targetAccept_Sigma = 0.5)
+  time <- proc.time() - stimeshmc # takes double the time as previous full model
+  timeshmc[i] <- time[3]
+}
+
+timeshmc
+
+```
+
+```{r}
+burnin <- 30000
+maxIts <- 100000
+plot(s_hmc_results[[1]][-(1:burnin)], type = "l")
+plot(s_hmc_results[[2]][-(1:burnin), 1, 1], type = "l")
+
+# target function
+target_chain_shmc <- c()
+for (i in 1:maxIts){
+  target_chain_shmc[i] <- s_target2(s_hmc_results[[1]][i], 
+                                    s_hmc_results[[2]][i, , ], D = D_ex, 
+                                    band.no = 10)
+}
+
+plot(target_chain_shmc[-(1:burnin)], type = "l")
+
+# pairwise distances
+dist_mat_shmc <- array(0, dim = c(maxIts, 25, 25))
+for (i in 1:maxIts){
+  dist_mat_shmc[i, , ] <- as.matrix(dist(s_hmc_results[[2]][i, , ], diag = TRUE, 
+                                         upper = TRUE))
+}
+
+par(mfrow = c(2, 2))
+plot(dist_mat_shmc[-(1:burnin), 1, 2], type = "l")
+abline(h = D_ex[1, 2], col = "red")
+plot(dist_mat_shmc[-(1:burnin), 2, 10], type = "l")
+abline(h = D_ex[2, 10], col = "red")
+plot(dist_mat_shmc[-(1:burnin), 25, 5], type = "l")
+abline(h = D_ex[25, 5], col = "red")
+plot(dist_mat_shmc[-(1:burnin), 15, 7], type = "l")
+abline(h = D_ex[15, 7], col = "red")
+```
+
+## capture MSE as a function of the number of bands
+
+```{r}
+set.seed(12345)
+maxIts <- 50000
+burnin <- 10000
+dims <- 2
+samp <- c(10, 15, 20, 25, 30)
+
+mse_hmc <- matrix(NA, nrow = max(samp), ncol = length(samp))
+for (r in 1:length(samp)){
+  n <- samp[r]
+  Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(c(1, 1))) # dims = 2, n = 25
+  D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
+  for (s in 1:10){
+    sim <- sparse_hmc(n, dims, maxIts, band.no = s,
+                            D = D.sim, stepSize = 1, stepSizeSigma = 1, 
+                            targetAccept = 0.65, targetAccept_Sigma = 0.5)
+    error <- c()
+    for (t in 1:maxIts){
+      error[t] <- mean((as.matrix(dist(sim[[2]][t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
+    }
+    mse_hmc[s, r] <- mean(error[-(1:burnin)])
+  }
+}
+```
+
+```{r}
+for (r in 1:4){
+  plot(mse_hmc[, r], ylab = "Mean Squared Error", xlab = "Band Number", 
+       main = paste("Band Selection ( n = ", samp[r], ")"), 
+       xlim = c(0, 10))
+}
+```
+
+## error grid
+
+```{r}
+sig_error <- function(noise){
+  sig <- log(1 + noise/100)
+  return(sqrt(sig))
+}
+
+# pct needs to be a vector
+sim_errorpct_hmc <- function(pct, dims, size, maxIts, band.no, targetAccept, data,
+                         targetAccept_Sigma, stepSize, stepSizeSigma){
+  data_sim <- array(0, dim = c(length(pct), size, dims))
+  for (i in 1:length(pct)){
+    noise <- matrix(exp(rnorm(size^2, mean = 0, sd = sig_error(noise = pct[i]))), size, size)
+    noise <- (noise + t(noise)) / 2
+    diag(noise) <- 0
+    D.noise <- noise * data
+    sim <- sparse_hmc(size, dims, maxIts, band.no, targetAccept, D = D.noise,
+                                  targetAccept_Sigma, stepSize, stepSizeSigma)
+  
+    data_sim[i, , ] <- sim[[2]][maxIts, , ]
+  }
+  return(data_sim)
+}
+```
+
+data simulation
+
+```{r}
+set.seed(12345)
+
+l <- rep(c("blue", "green", "yellow", "orange", "red"), 5)
+
+data_test <- tibble(x = rep(seq(-1, 1, by = .5), 5),
+                    y = c(rep(-1, 5), rep(-.5, 5), rep(0, 5), rep(.5, 5), rep(1, 5)),
+                    color = l)
+dist_test <- as.matrix(dist(data_test[, 1:2], diag = TRUE, upper = TRUE))
+
+# permuting items of the data
+data_test2 <- data_test[sample(nrow(data_test)), ]
+dist_test2 <- as.matrix(dist(data_test2[, 1:2], diag = TRUE, upper = TRUE))
+
+#dist_test2 <- dist_test[sample(nrow(dist_test)), sample(ncol(dist_test))]
+
+# data_test - both datasets yield the same grid (as expected)
+ggplot(data = data_test, aes(x, y, color = color)) +
+  geom_point() + theme(legend.position = "none")
+
+ggplot(data = data_test2, aes(x, y, color = color)) +
+  geom_point() + theme(legend.position = "none")
+```
+
+```{r}
+set.seed(12345)
+#noise_pct <- c(0, 2, 5, 10)
+noise_pct <- c(2)
+sim_band25_hmc <- sim_errorpct_hmc(pct = noise_pct, dims = 2, size = 25, 
+                           maxIts = 50000, band.no = 25, 
+                           targetAccept = 0.65, data = dist_test2, 
+                           targetAccept_Sigma = 0.5, stepSize = 1, 
+                           stepSizeSigma = 1)
+```
+
+```{r}
+set.seed(12345)
+sim_band10_hmc <- sim_errorpct_hmc(pct = noise_pct, dims = 2, size = 25, 
+                           maxIts = 50000, band.no = 10, 
+                           targetAccept = 0.65, data = dist_test2, 
+                           targetAccept_Sigma = 0.5, stepSize = 1, 
+                           stepSizeSigma = 1)
+```
+
+```{r}
+set.seed(12345)
+sim_band6_hmc <- sim_errorpct_hmc(pct = noise_pct, dims = 2, size = 25, 
+                           maxIts = 50000, band.no = 6, 
+                           targetAccept = 0.65, data = dist_test2, 
+                           targetAccept_Sigma = 0.5, stepSize = 1, 
+                           stepSizeSigma = 1)
+```
+
+```{r}
+set.seed(12345)
+sim_band3_hmc <- sim_errorpct_hmc(pct = noise_pct, dims = 2, size = 25, 
+                           maxIts = 50000, band.no = 3, 
+                           targetAccept = 0.65, data = dist_test2, 
+                           targetAccept_Sigma = 0.5, stepSize = 1, 
+                           stepSizeSigma = 1)
+```
+
+results 
+
+```{r}
+theme_update(plot.title = element_text(hjust = 0.5, size = rel(.75)),
+             legend.position = "none")
+
+# 25 bands 
+g1.25.hmc <- ggplot(data = tibble(x.sim = sim_band25_hmc[1, , 1], y.sim = sim_band25_hmc[1, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("25 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 2), ylim = c(-1.5, 1.5))
+
+g2.25.hmc <- ggplot(data = tibble(x.sim = sim_band25_hmc[2, , 1], y.sim = sim_band25_hmc[2, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("25 bands \n", noise_pct[2], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+# coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.75, 1.5))
+
+g3.25.hmc <- ggplot(data = tibble(x.sim = sim_band25_hmc[3, , 1], y.sim = sim_band25_hmc[3, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("25 bands \n", noise_pct[3], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g4.25.hmc <- ggplot(data = tibble(x.sim = sim_band25_hmc[4, , 1], y.sim = sim_band25_hmc[4, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("25 bands \n", noise_pct[4], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+# 10 bands
+
+g1.10.hmc <- ggplot(data = tibble(x.sim = sim_band10_hmc[1, , 1], y.sim = sim_band10_hmc[1, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+    labs(title = paste("10 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g2.10.hmc <- ggplot(data = tibble(x.sim = sim_band10_hmc[1, , 1], y.sim = sim_band10_hmc[1, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("10 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g3.10.hmc <- ggplot(data = tibble(x.sim = sim_band10_hmc[3, , 1], y.sim = sim_band10_hmc[3, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("10 bands \n", noise_pct[3], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g4.10.hmc <- ggplot(data = tibble(x.sim = sim_band10_hmc[4, , 1], y.sim = sim_band10_hmc[4, , 2],
+                              color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("10 bands \n", noise_pct[4], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+# 6 bands
+
+g1.6.hmc <- ggplot(data = tibble(x.sim = sim_band6_hmc[1, , 1], y.sim = sim_band6_hmc[1, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+    labs(title = paste("6 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+
+g2.6.hmc <- ggplot(data = tibble(x.sim = sim_band6_hmc[1, , 1], y.sim = sim_band6_hmc[1, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("6 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+
+g3.6.hmc <- ggplot(data = tibble(x.sim = sim_band6_hmc[3, , 1], y.sim = sim_band6_hmc[3, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("6 bands \n", noise_pct[3], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+
+g4.6.hmc <- ggplot(data = tibble(x.sim = sim_band6_hmc[4, , 1], y.sim = sim_band6_hmc[4, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("6 bands \n", noise_pct[4], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+
+# 3 bands
+
+g1.3.hmc <- ggplot(data = tibble(x.sim = sim_band3_hmc[1, , 1], y.sim = sim_band3_hmc[1, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+    labs(title = paste("3 bands \n", noise_pct[1], "% noise"),
+         x = "",
+         y = "") + 
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+
+g2.3.hmc <- ggplot(data = tibble(x.sim = sim_band3_hmc[2, , 1], y.sim = sim_band3_hmc[2, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("3 bands \n", noise_pct[2], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.7))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g3.3.hmc <- ggplot(data = tibble(x.sim = sim_band3_hmc[3, , 1], y.sim = sim_band3_hmc[3, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("3 bands \n", noise_pct[3], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+g4.3.hmc <- ggplot(data = tibble(x.sim = sim_band3_hmc[4, , 1], y.sim = sim_band3_hmc[4, , 2],
+                             color = data_test2$color)) + 
+  geom_point(aes(x.sim, y.sim, color = color)) + 
+  labs(title = paste("3 bands \n", noise_pct[4], "% noise"),
+         x = "",
+         y = "") + 
+  #coord_fixed(ratio = 1, xlim = c(-1.7, 1.5), ylim = c(-1.5, 1.5))
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2))
+
+grid.arrange(g1.25.hmc, g2.25.hmc, g3.25.hmc, g4.25.hmc,
+             g1.10.hmc, g2.10.hmc, g3.10.hmc, g4.10.hmc, nrow = 2, ncol = 4)
+
+#grid.arrange(g1.9, g2.9, g3.9, g4.9,
+#             g1.8, g2.8, g3.8, g4.8, nrow = 2, ncol = 4)
+
+grid.arrange(g1.6.hmc, g2.6.hmc, g3.6.hmc, g4.6.hmc, 
+             g1.3.hmc, g2.3.hmc, g3.3.hmc, g4.3.hmc, nrow = 2, ncol = 4)
+
+grid.arrange(g1.25.hmc, g1.10.hmc, g1.6.hmc, g1.3.hmc,
+             g2.10.hmc, g2.6.hmc, nrow = 2, ncol = 3)
+
+# orientation keeps changing 
+```
