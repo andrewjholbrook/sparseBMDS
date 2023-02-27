@@ -112,12 +112,12 @@ Sanity check, same log-likelihood as above
 ```{r}
 set.seed(12345)
 set.seed(12345)
-Z_ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
+Z.ex <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1)))
 #Z_tilde <- mvrnorm(25, mu = c(0,0), Sigma = diag(c(1, 1))) + 0.1
-D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+D.ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
 
 t <- proc.time()
-ll_latent(sigma = 0.3, D_ex, latent = Z_ex)
+ll_latent(sigma = 0.3, D.ex, latent = Z.ex)
 proc.time() - t
 
 #ll_latent(sigma = 0.3, D_ex, latent = Z_tilde)

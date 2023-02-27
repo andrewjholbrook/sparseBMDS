@@ -11,10 +11,34 @@ library(tidyverse)
 library(invgamma)
 library(mvtnorm)
 library(truncnorm)
+library(coda)
 #library(gridExtra)
 
 # load necessary functions
-source("sBMDS_functions.R")
+#source("sBMDS_functions.R")
+source("R_scripts/sBMDS_functions.R")
+
+### function for classic MDS
+
+cmds <- function(D, dims){
+  # double center matrix
+  dd <- D^2
+  mndd <- mean(dd)
+  rowdd <- dd*0 + rowMeans(dd)
+  coldd <- t(dd*0 + colMeans(dd))
+  B = - (dd - rowdd - coldd + mndd) / 2
+  # decompose B by its eigenvalues and vectors 
+  eigendecomp <- eigen(B)
+  # extract dims largest eigenvalues
+  Lambda <- diag(eigendecomp$values[1:dims])
+  # extract eigenvectors corresponding to eigenvalues
+  E <- eigendecomp$vectors[ , 1:dims] 
+  # latent variable calculation, X = E %*% Lambda^(1/2)
+  X <- E %*% sqrt(Lambda)
+  return(X)
+}
+
+### function for Metropolis but using known latent variables as initial position
 
 sbmds_metropolis_cheat <- function(dims, maxIts, D, sigmasq, band.no,
                                   targetAccept = 0.8, stepSize = 1) {
@@ -25,7 +49,8 @@ sbmds_metropolis_cheat <- function(dims, maxIts, D, sigmasq, band.no,
 
   # specify the first random value
   #chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
-  chain[1, , ] <- as.matrix(data_test2[ , -3])
+  #chain[1, , ] <- as.matrix(data_test2[ , -3])
+  chain[1, , ] <- cmds(dist_test2, dims)
 
   totalAccept <- rep(0, maxIts)
   Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
@@ -130,18 +155,18 @@ error_grid <- function(sd, dims, size, maxIts, band.no, targetAccept, data,
   #ees <- sum(coda::effectiveSize(dist_mat_mh[-(1:burnin), , 10]))
     ### look at minimum across all the (n 2) pairwise distances, > 100
   miness <- min(ess)
-  if (miness > 100){
-    data_sim <- colMeans(sim[-(1:burnin), , ])
-  }
-    # data_sim[i, , ] <- sim[maxIts, , ]
-  #return(list(data_sim, miness))
-  return(list(miness, dist_mat_mh))
+  #if (miness > 100){
+  #  data_sim <- colMeans(sim[-(1:burnin), , ])
+  #}
+  data_sim <- colMeans(sim[-(1:burnin), , ])
+  return(list(data_sim, miness))
+  #return(list(ess, dist_mat_mh))
 }
 
 # results
 
 error_results <- error_grid(sd = sd_opt, dims = 2, size = 25, 
-                            maxIts = 150000, band.no = band, 
+                            maxIts = 300000, band.no = band, 
                             targetAccept = 0.238, data = D.noise, 
                             stepSize = .1, burnin = 1)
 
