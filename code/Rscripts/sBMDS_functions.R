@@ -510,7 +510,7 @@ sbmds_hmc_nonadapt_sigma <- function(dims, maxIts, D, sigmasq, band.no,
   chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
 
   # U(q0) = - log posterior
-  currentU <- - s_target(chain[1, , ], D, sigmasq, band.no)
+  currentU <- - s_target_no_sigma_prior(chain[1, , ], D, sigmasq, band.no)
 
   for (i in 2:maxIts) {
     ####### update for latent variables - HMC
@@ -532,7 +532,7 @@ sbmds_hmc_nonadapt_sigma <- function(dims, maxIts, D, sigmasq, band.no,
       0.5 * stepSize * sbmds_grad(proposalState, D, sigmasq, band.no)
 
     # quantities for accept/reject
-    proposedU = - s_target(proposalState, D, sigmasq, band.no) # U(qt)
+    proposedU = - s_target_no_sigma_prior(proposalState, D, sigmasq, band.no) # U(qt)
     proposedK = sum(momentum^2)/2 # K(pt)
     u <- runif(1)
 

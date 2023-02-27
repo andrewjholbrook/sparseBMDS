@@ -11,17 +11,18 @@ Z_ex <- rmvnorm(25, mean = rep(0, 2), sigma = diag(2))
 D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
 
 # create engine 
-engine <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
+engine_test <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
                                    truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
                                    single = 0, bandwidth = 25)
-engine <- MassiveMDS::setPairwiseData(engine, data = D_ex)
-engine <- MassiveMDS::updateLocations(engine, locations = Z_ex)
-engine <- MassiveMDS::setPrecision(engine, precision = 2.0)
+engine_test <- MassiveMDS::setPairwiseData(engine_test, data = D_ex)
+engine_test <- MassiveMDS::updateLocations(engine_test, locations = Z_ex)
+engine_test <- MassiveMDS::setPrecision(engine_test, precision = 100)
 ```
 
 Running simulation for Metropolis with fixed sigma
 ```{r}
-metropolis_results <- sbmds_metropolis(maxIts = 100000, data = D_ex, targetAccept = 0.238, stepSize = .1)
+metropolis_results <- sbmds_metropolis(maxIts = 100000, data = D_ex, 
+                                       engine = engine_test, targetAccept = 0.238, stepSize = .1)
 ```
 
 Sanity checks for accuracy
@@ -31,7 +32,7 @@ plot(metropolis_results[ , 1, 1], type = "l")
 # traceplot when target function evaluated at thetas 
 s_target_chain_mh <- c()
 for (i in 1:100000){
-  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine)
+  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_test)
 }
 
 plot(s_target_chain_mh, type = "l")
@@ -49,6 +50,43 @@ for (i in 1:25){
   for (j in 1:25){
     if (i != j){
       plot(s_dist_mat_mh[, i, j], type = "l")
+      abline(h = D_ex[i, j], col = "red")
+    }
+  }
+}
+```
+
+Running simulation for HMC with fixed sigma
+```{r}
+hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, data = D_ex, 
+                                        engine = engine_test, targetAccept = 0.238, stepSize = .1)
+```
+
+
+```{r}
+plot(hmc_results[ , 1, 1], type = "l")
+
+# traceplot when target function evaluated at thetas 
+s_target_chain_hmc <- c()
+for (i in 1:100000){
+  s_target_chain_hmc[i] <- s_target_no_sigma_prior(locations = hmc_results[i, , ], engine_test)
+}
+
+plot(s_target_chain_hmc, type = "l")
+acf(s_target_chain_hmc)
+coda::effectiveSize(s_target_chain_hmc)
+
+# traceplot for pairwise distances
+s_dist_mat_hmc <- array(0, dim = c(100000, 25, 25))
+for (i in 1:100000){
+  s_dist_mat_hmc[i, , ] <- as.matrix(dist(hmc_results[i, , ], diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+for (i in 1:25){
+  for (j in 1:25){
+    if (i != j){
+      plot(s_dist_mat_hmc[, i, j], type = "l")
       abline(h = D_ex[i, j], col = "red")
     }
   }

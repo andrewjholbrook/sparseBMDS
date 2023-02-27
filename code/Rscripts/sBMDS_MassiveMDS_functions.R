@@ -38,7 +38,7 @@ delta <- function(n) {
 
 ##### non-adaptive sigma, adaptive latent variable, Metropolis
 
-sbmds_metropolis <- function(maxIts, data, targetAccept = 0.8, stepSize = 1) {
+sbmds_metropolis <- function(maxIts, data, engine, targetAccept = 0.8, stepSize = 1) {
 
   sigmasq <- 1 / engine$precision
   dims <- engine$embeddingDimension
@@ -100,5 +100,83 @@ sbmds_metropolis <- function(maxIts, data, targetAccept = 0.8, stepSize = 1) {
   return(chain)
 }
 
+##### non-adaptive sigma, adaptive latent variable, HMC
 
+sbmds_nonadapt_sigma_hmc <- function(maxIts, data, engine, targetAccept = 0.8, stepSize = 1) {
+
+  sigmasq <- 1 / engine$precision
+  dims <- engine$embeddingDimension
+  n <- engine$locationCount
+
+  # initializations for latent variable
+  chain <- array(0, dim = c(maxIts, n, dims))
+  acceptances <- 0
+  totalaccept <- rep(0, maxIts)
+  SampCount <- 0
+  SampBound <- 50   # current total samples before adapting radius
+
+  L <- 20 # number of leapfrog steps
+
+  # random starting point for latent variables and sigma
+  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+
+  # U(q0) = - log posterior
+  currentU <- - s_target_no_sigma_prior(location = chain[1, , ], engine)
+
+  for (i in 2:maxIts) {
+    ####### update for latent variables - HMC
+    proposalState <- chain[i - 1, , ] # q0
+    momentum <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims)) # p0
+    currentK <- sum(momentum^2)/2 # valid bc independence; dimension K(p0)
+
+    # leapfrog steps - obtain qt and pt
+    momentum <- momentum + # half-step
+      0.5 * stepSize * sbmds_grad(location = proposalState, engine)
+
+    for (l in 1:L) { # full step for p and q unless end of trajectory
+      proposalState <- proposalState + stepSize * momentum # qt
+      if (l != L) momentum <- momentum +
+          stepSize * sbmds_grad(location = proposalState, engine)
+    }
+
+    momentum <- momentum + # half-step
+      0.5 * stepSize * sbmds_grad(location = proposalState, engine)
+
+    # quantities for accept/reject
+    proposedU = - s_target_no_sigma_prior(location = proposalState, engine) # U(qt)
+    proposedK = sum(momentum^2)/2 # K(pt)
+    u <- runif(1)
+
+    if (log(u) < currentU - proposedU + currentK - proposedK) {
+      chain[i, , ] <- proposalState # move pt to be p0 now
+      currentU <- proposedU # update U(p0)
+      totalaccept[i] <- 1
+      acceptances <- acceptances + 1
+    } else {
+      chain[i, , ] <- chain[i - 1, , ] # keep p0
+    }
+
+    # adaptive stepsize for latent variables
+    SampCount <- SampCount + 1
+
+    if (SampCount == SampBound) {
+      acceptRatio <- acceptances / SampBound
+      if (acceptRatio > targetAccept) {
+        stepSize <- stepSize * (1 + delta(i - 1)) # increase stepsize
+      } else {
+        stepSize <- stepSize * (1 - delta(i - 1)) # decrease stepsize
+      }
+
+      # reset Sampcount and Acceptances
+      SampCount <- 0
+      acceptances <- 0
+    }
+
+    if (i %% 100 == 0) cat("Iteration ", i, "\n","stepSize: ", stepSize, "\n")
+  }
+
+  cat("Acceptance rate: ", sum(totalaccept)/(maxIts - 1))
+
+  return(chain)
+}
 
