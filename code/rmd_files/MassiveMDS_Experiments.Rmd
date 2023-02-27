@@ -1,0 +1,57 @@
+
+Source functions
+```{r}
+source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
+```
+
+```{r}
+set.seed(12345)
+# create data
+Z_ex <- rmvnorm(25, mean = rep(0, 2), sigma = diag(2))
+D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+
+# create engine 
+engine <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
+                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
+                                   single = 0, bandwidth = 25)
+engine <- MassiveMDS::setPairwiseData(engine, data = D_ex)
+engine <- MassiveMDS::updateLocations(engine, locations = Z_ex)
+engine <- MassiveMDS::setPrecision(engine, precision = 2.0)
+```
+
+Running simulation for Metropolis with fixed sigma
+```{r}
+metropolis_results <- sbmds_metropolis(maxIts = 100000, data = D_ex, targetAccept = 0.238, stepSize = .1)
+```
+
+Sanity checks for accuracy
+```{r}
+plot(metropolis_results[ , 1, 1], type = "l")
+
+# traceplot when target function evaluated at thetas 
+s_target_chain_mh <- c()
+for (i in 1:100000){
+  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine)
+}
+
+plot(s_target_chain_mh, type = "l")
+acf(s_target_chain_mh)
+coda::effectiveSize(s_target_chain_mh)
+
+# traceplot for pairwise distances
+s_dist_mat_mh <- array(0, dim = c(100000, 25, 25))
+for (i in 1:100000){
+  s_dist_mat_mh[i, , ] <- as.matrix(dist(metropolis_results[i, , ], diag = TRUE, upper = TRUE))
+}
+
+par(mfrow=c(2,2))
+for (i in 1:25){
+  for (j in 1:25){
+    if (i != j){
+      plot(s_dist_mat_mh[, i, j], type = "l")
+      abline(h = D_ex[i, j], col = "red")
+    }
+  }
+}
+```
+
