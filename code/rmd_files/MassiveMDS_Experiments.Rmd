@@ -12,9 +12,9 @@ source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
 #source("~/sparseBMDS/code/Rscripts/sBMDS_functions.R")
 ```
 
+Create data
 ```{r}
 set.seed(12345)
-# create data
 Z_ex <- rmvnorm(25, mean = rep(0, 2), sigma = diag(2))
 D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
 
@@ -23,19 +23,12 @@ noise <- matrix(rtruncnorm(25^2, mean = 0, sd = .1), 25, 25)
 noise <- (noise + t(noise)) / 2
 diag(noise) <- 0
 D_noise <- noise + D_ex
-
-# create engine 
-engine_test <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
-                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
-                                   single = 0, bandwidth = 25)
-engine_test <- MassiveMDS::setPairwiseData(engine_test, data = D_ex)
-#engine_test <- MassiveMDS::updateLocations(engine_test, locations = Z_ex)
-engine_test <- MassiveMDS::setPrecision(engine_test, precision = 100)
 ```
 
 Running simulation for Metropolis with fixed sigma
 ```{r}
-metropolis_results <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_ex, bandwidth = 25, 
+set.seed(12345)
+metropolis_results <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, bandwidth = 25, 
                                        precision = 100, targetAccept = 0.238, stepSize = .1)
 # metropolis_results <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, D = D_noise, 
 #                                        sigmasq = .01, band.no = 25, targetAccept = 0.238, stepSize = .1)
@@ -46,9 +39,17 @@ Sanity checks for accuracy
 plot(metropolis_results[ , 1, 1], type = "l")
 
 # traceplot when target function evaluated at thetas 
+set.seed(12345)
+# create engine 
+engine_skelly <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
+                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
+                                   single = 0, bandwidth = 25)
+engine_skelly <- MassiveMDS::setPairwiseData(engine_test, data = D_noise)
+engine_skelly <- MassiveMDS::setPrecision(engine_test, precision = 100)
+
 s_target_chain_mh <- c()
 for (i in 1:100000){
-  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_test)
+  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_skelly)
 }
 
 # for (i in 1:100000){
@@ -78,8 +79,8 @@ for (i in 1:5){
 
 Running simulation for HMC with fixed sigma
 ```{r}
-hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, data = D_ex, 
-                                        engine = engine_test, targetAccept = 0.238, stepSize = .1)
+hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, precision = 100,
+                                        bandwidth = 25, targetAccept = 0.238, stepSize = .1)
 ```
 
 
@@ -87,9 +88,16 @@ hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, data = D_ex,
 plot(hmc_results[ , 1, 1], type = "l")
 
 # traceplot when target function evaluated at thetas 
+
+engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
+                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
+                                   single = 0, bandwidth = 25)
+engine_plain <- MassiveMDS::setPairwiseData(engine_test, data = D_noise)
+engine_plain <- MassiveMDS::setPrecision(engine_test, precision = 100)
+
 s_target_chain_hmc <- c()
 for (i in 1:100000){
-  s_target_chain_hmc[i] <- s_target_no_sigma_prior(locations = hmc_results[i, , ], engine_test)
+  s_target_chain_hmc[i] <- s_target_no_sigma_prior(locations = hmc_results[i, , ], engine_plain)
 }
 
 plot(s_target_chain_hmc, type = "l")
@@ -103,8 +111,8 @@ for (i in 1:100000){
 }
 
 par(mfrow=c(2,2))
-for (i in 1:25){
-  for (j in 1:25){
+for (i in 1:5){
+  for (j in 1:5){
     if (i != j){
       plot(s_dist_mat_hmc[, i, j], type = "l")
       abline(h = D_ex[i, j], col = "red")
@@ -117,8 +125,8 @@ Capturing MSE as a function of band # with fixed sigma = 0.01 & cmds as initial 
 
 ```{r}
 set.seed(12345)
-samp <- c(25, 50)#c(10, 15, 20, 25, 30)
-mse_band2 <- matrix(NA, nrow = max(samp), ncol = length(samp))
+samp <- c(10000) #c(10, 15, 20, 25, 30)
+mse_band <- matrix(NA, nrow = max(samp), ncol = length(samp))
 
 for (r in 1:length(samp)){
   n <- samp[r]
@@ -128,26 +136,21 @@ for (r in 1:length(samp)){
   noise <- (noise + t(noise)) / 2
   diag(noise) <- 0
   D.noise <- noise + D.sim
-  for (s in 1:n){
-    engine.sim <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = n,
-                                         truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
-                                         single = 0, bandwidth = s)
-    engine.sim <- MassiveMDS::setPairwiseData(engine_test, data = D.noise)
-    engine.sim <- MassiveMDS::updateLocations(engine_test, locations = Z.sim)
-    engine.sim <- MassiveMDS::setPrecision(engine_test, precision = 100)
+  for (s in 1:5){
     # sim <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, band.no = s, targetAccept = 0.238,
     #                              sigmasq = .01, D = D.noise, stepSize = 1)
-    sim <- sbmds_metropolis(maxIts = 100000, data = D.noise, engine = engine.sim, targetAccept = 0.238,
-                            stepSize = .1)
+    sim <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D.noise, 
+                                    precision = 100, bandwidth = s, 
+                                    targetAccept = 0.238, stepSize = .1)
     error <- c()
     for (t in 1:100000){
-      error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.noise)^2)
+      error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
     }
-    mse_band2[s, r] <- mean(error)
+    mse_band[s, r] <- mean(error)
   }
 }
 ```
 ```{r}
-plot(mse_band2[, 1])
+plot(mse_band[, 1])
 ```
 

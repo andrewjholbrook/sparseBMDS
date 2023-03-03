@@ -2,7 +2,7 @@
 # (the log-posterior which is proportional to log-likelihood + log-priors)
 
 s_target_no_sigma_prior <- function(locations, engine) {
-  # update engine to be location of input
+  # update engine to calculate likelihood at location of input
   engine <- MassiveMDS::updateLocations(engine, locations)
   # theta is the latent variable
   output <- MassiveMDS::getLogLikelihood(engine) +
@@ -14,6 +14,8 @@ s_target_no_sigma_prior <- function(locations, engine) {
 
 s_target <- function(locations, engine) {
   sigmasq <- 1 / engine$precision
+  # update engine to calculate likelihood at location of input
+  engine <- MassiveMDS::updateLocations(engine, locations)
   output <- MassiveMDS::getLogLikelihood(engine) +
     # independent, Gaussian prior for theta centered at 0 & sd = 1
     sum(mvtnorm::dmvnorm(locations, mean = rep(0, engine$embeddingDimension),
@@ -26,6 +28,8 @@ s_target <- function(locations, engine) {
 ### gradient for target function
 
 sbmds_grad <- function(locations, engine){
+  # update engine to calculate gradient at location of input
+  engine <- MassiveMDS::updateLocations(engine, locations)
   gradient <- MassiveMDS::getGradient(engine) - locations
   return(gradient)
 }
@@ -128,11 +132,16 @@ sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
 
 ##### non-adaptive sigma, adaptive latent variable, HMC
 
-sbmds_nonadapt_sigma_hmc <- function(maxIts, data, engine, targetAccept = 0.8, stepSize = 1) {
+sbmds_nonadapt_sigma_hmc <- function(maxIts, dims, data, bandwidth, precision,
+                                     targetAccept = 0.8, stepSize = 1) {
 
-  sigmasq <- 1 / engine$precision
-  dims <- engine$embeddingDimension
-  n <- engine$locationCount
+  n <- dim(data)[1]
+  engine_test <- MassiveMDS::createEngine(embeddingDimension = dims, locationCount = n,
+                                          truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
+                                          single = 0, bandwidth)
+
+  engine_test <- MassiveMDS::setPairwiseData(engine_test, data)
+  engine_test <- MassiveMDS::setPrecision(engine_test, precision)
 
   # initializations for latent variable
   chain <- array(0, dim = c(maxIts, n, dims))
@@ -144,10 +153,10 @@ sbmds_nonadapt_sigma_hmc <- function(maxIts, data, engine, targetAccept = 0.8, s
   L <- 20 # number of leapfrog steps
 
   # random starting point for latent variables and sigma
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+  chain[1, , ] <- cmds(data, dims) #mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
 
   # U(q0) = - log posterior
-  currentU <- - s_target_no_sigma_prior(location = chain[1, , ], engine)
+  currentU <- - s_target_no_sigma_prior(location = chain[1, , ], engine = engine_test)
 
   for (i in 2:maxIts) {
     ####### update for latent variables - HMC
@@ -157,19 +166,19 @@ sbmds_nonadapt_sigma_hmc <- function(maxIts, data, engine, targetAccept = 0.8, s
 
     # leapfrog steps - obtain qt and pt
     momentum <- momentum + # half-step
-      0.5 * stepSize * sbmds_grad(location = proposalState, engine)
+      0.5 * stepSize * sbmds_grad(location = proposalState, engine = engine_test)
 
     for (l in 1:L) { # full step for p and q unless end of trajectory
       proposalState <- proposalState + stepSize * momentum # qt
       if (l != L) momentum <- momentum +
-          stepSize * sbmds_grad(location = proposalState, engine)
+          stepSize * sbmds_grad(location = proposalState, engine = engine_test)
     }
 
     momentum <- momentum + # half-step
-      0.5 * stepSize * sbmds_grad(location = proposalState, engine)
+      0.5 * stepSize * sbmds_grad(location = proposalState, engine = engine_test)
 
     # quantities for accept/reject
-    proposedU = - s_target_no_sigma_prior(location = proposalState, engine) # U(qt)
+    proposedU = - s_target_no_sigma_prior(location = proposalState, engine = engine_test) # U(qt)
     proposedK = sum(momentum^2)/2 # K(pt)
     u <- runif(1)
 
