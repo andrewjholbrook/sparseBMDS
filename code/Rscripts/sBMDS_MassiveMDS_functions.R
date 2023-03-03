@@ -1,9 +1,9 @@
-library(MassiveMDS)
-
 ##### target functions
 # (the log-posterior which is proportional to log-likelihood + log-priors)
 
 s_target_no_sigma_prior <- function(locations, engine) {
+  # update engine to be location of input
+  engine <- MassiveMDS::updateLocations(engine, locations)
   # theta is the latent variable
   output <- MassiveMDS::getLogLikelihood(engine) +
     # independent, Gaussian prior for theta centered at 0 & sd = 1
@@ -36,19 +36,45 @@ delta <- function(n) {
   return( min(0.01, n^(-0.5)) )
 }
 
+##### classical MDS function
+
+cmds <- function(D, dims){
+  # double center matrix
+  dd <- D^2
+  mndd <- mean(dd)
+  rowdd <- dd*0 + rowMeans(dd)
+  coldd <- t(dd*0 + colMeans(dd))
+  B = - (dd - rowdd - coldd + mndd) / 2
+  # decompose B by its eigenvalues and vectors
+  eigendecomp <- eigen(B)
+  # extract dims largest eigenvalues
+  Lambda <- diag(eigendecomp$values[1:dims])
+  # extract eigenvectors corresponding to eigenvalues
+  E <- eigendecomp$vectors[ , 1:dims]
+  # latent variable calculation, X = E %*% Lambda^(1/2)
+  X <- E %*% sqrt(Lambda)
+  return(X)
+}
+
 ##### non-adaptive sigma, adaptive latent variable, Metropolis
 
-sbmds_metropolis <- function(maxIts, data, engine, targetAccept = 0.8, stepSize = 1) {
+sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
+                             targetAccept = 0.8, stepSize = 1) {
 
-  sigmasq <- 1 / engine$precision
-  dims <- engine$embeddingDimension
-  n <- engine$locationCount
+  n <- dim(data)[1]
+  engine_test <- MassiveMDS::createEngine(embeddingDimension = dims, locationCount = n,
+                                          truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
+                                          single = 0, bandwidth)
+
+  engine_test <- MassiveMDS::setPairwiseData(engine_test, data)
+  engine_test <- MassiveMDS::setPrecision(engine_test, precision)
 
   # create the chain
   chain <- array(0, dim = c(maxIts, n, dims))
 
   # specify the first random value
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  #chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  chain[1, , ] <- cmds(data, dims)
 
   totalAccept <- rep(0, maxIts)
   Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
@@ -64,8 +90,8 @@ sbmds_metropolis <- function(maxIts, data, engine, targetAccept = 0.8, stepSize 
     u <- runif(1)
     # Metropolis, A = target(thetaStar)/target(previous iteration)
     # target on log scale
-    logA <- s_target_no_sigma_prior(thetaStar, engine) -
-      s_target_no_sigma_prior(chain[s - 1, , ], engine)
+    logA <- s_target_no_sigma_prior(thetaStar, engine = engine_test) -
+      s_target_no_sigma_prior(chain[s - 1, , ], engine = engine_test)
 
     if(log(u) < logA) {
       chain[s, , ] <- thetaStar # ACCEPT !! # next iteration to thetastar

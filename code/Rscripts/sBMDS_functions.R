@@ -29,7 +29,7 @@ sbmds_ll <- function(latent, D, sigmasq, band.no){
   m <- n * band.no - band.no * (band.no + 1) / 2
   term1 <- (m / 2) * log(sigmasq)
   term2 <- sumr(latent, D, sigmasq, band.no)
-  loglik <- -(term1 + term2)
+  loglik <- -(term1 + term2 + m / 2 * log(2 * pi))
   return(loglik)
 }
 
@@ -62,7 +62,7 @@ sbmds_ll_fast <- function(latent, D, sigmasq, band.no){
   m <- n * band.no - band.no * (band.no + 1) / 2
   term1 <- (m / 2) * log(sigmasq)
   term2 <- sumr_fast(latent, D, sigmasq, band.no)
-  loglik <- -(term1 + term2)
+  loglik <- -(term1 + term2 + m / 2 * log(2 * pi))
   return(loglik)
 }
 
@@ -157,6 +157,26 @@ delta <- function(n) {
   return( min(0.01, n^(-0.5)) )
 }
 
+##### classical MDS function
+
+cmds <- function(D, dims){
+  # double center matrix
+  dd <- D^2
+  mndd <- mean(dd)
+  rowdd <- dd*0 + rowMeans(dd)
+  coldd <- t(dd*0 + colMeans(dd))
+  B = - (dd - rowdd - coldd + mndd) / 2
+  # decompose B by its eigenvalues and vectors
+  eigendecomp <- eigen(B)
+  # extract dims largest eigenvalues
+  Lambda <- diag(eigendecomp$values[1:dims])
+  # extract eigenvectors corresponding to eigenvalues
+  E <- eigendecomp$vectors[ , 1:dims]
+  # latent variable calculation, X = E %*% Lambda^(1/2)
+  X <- E %*% sqrt(Lambda)
+  return(X)
+}
+
 ##### non-adaptive sigma, adaptive latent variable, Metropolis
 
 sbmds_metropolis <- function(dims, maxIts, D, sigmasq, band.no,
@@ -167,7 +187,8 @@ sbmds_metropolis <- function(dims, maxIts, D, sigmasq, band.no,
   chain <- array(0, dim = c(maxIts, n, dims))
 
   # specify the first random value
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  #chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  chain[1, , ] <- cmds(D, dims)
 
   totalAccept <- rep(0, maxIts)
   Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
@@ -229,7 +250,8 @@ sbmds_metropolis_fast <- function(dims, maxIts, D, sigmasq, band.no,
   chain <- array(0, dim = c(maxIts, n, dims))
 
   # specify the first random value
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  #chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  chain[1, , ] <- cmds(D, dims)
 
   totalAccept <- rep(0, maxIts)
   Acceptances = 0 # total acceptances within adaptation run (<= SampBound)

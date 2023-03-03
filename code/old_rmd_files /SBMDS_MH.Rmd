@@ -170,7 +170,7 @@ s_bmds_ll <- function(sigma, D, latent, band.no){
   m <- n * band.no - band.no * (band.no + 1) / 2  
   term1 <- (m / 2) * log(sigma)
   term2 <- sum_r(D_latent, D, sigma, band.no)
-  loglik <- -(term1 + term2)
+  loglik <- -(term1 + term2 + m/2 * log(2 * pi))
   return(loglik)
 }
 
@@ -216,8 +216,8 @@ proc.time() - t
 
 ```{r}
 # target function is the log-posterior which is proportional to log-likelihood + log-priors
-s_target <- function(theta, D) { # theta the latent variable; dims x 1 vector
-  output <- s_bmds_ll(sigma = 0.3, D, latent = theta, band.no = 25) + 
+s_target <- function(theta, D, sigma, band.no) { # theta the latent variable; dims x 1 vector
+  output <- s_bmds_ll(sigma, D, latent = theta, band.no) + 
     sum(mvtnorm::dmvnorm(theta, log = TRUE)) # independent, standard Gaussian prior for theta
   return(output)
 }
@@ -226,11 +226,12 @@ delta <- function(n) {
   return( min(0.01, n^(-0.5)) )
 }
 
-s_adapt_metropolis <- function(dims, maxIts, D, 
-                              targetAccept = 0.8, 
-                              stepSize = 1) {
+s_adapt_metropolis <- function(dims, maxIts, D, sigma, band.no,
+                               targetAccept = 0.8, 
+                               stepSize = 1) {
   
   # create the chain 
+  n <- dim(D)[1]
   chain <- array(0, dim = c(maxIts, n, dims))
   
   # specify the first random value
