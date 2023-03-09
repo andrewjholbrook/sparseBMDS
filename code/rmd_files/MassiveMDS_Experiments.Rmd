@@ -126,14 +126,15 @@ Capturing MSE as a function of band # with fixed sigma = 0.01 & cmds as initial 
 
 ```{r}
 set.seed(12345)
-samp <- c(10000) #c(10, 15, 20, 25, 30)
-mse_band10000 <- matrix(NA, nrow = max(samp), 1) #ncol = length(samp))
+samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)
+mse_band_hmc <- matrix(NA, nrow = max(samp), ncol = length(samp))
+burnin <- 20000
 
 for (r in 1:length(samp)){
   n <- samp[r]
   Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, 2), sigma = diag(2)) # dims = 2, n = 25
   D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-  noise <- matrix(rtruncnorm(n^2, mean = 0, sd = .1), n, n) 
+  noise <- matrix(rtruncnorm(n^2, mean = 0, sd = .2), n, n) 
   noise <- (noise + t(noise)) / 2
   diag(noise) <- 0
   D.noise <- noise + D.sim
@@ -141,13 +142,13 @@ for (r in 1:length(samp)){
     # sim <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, band.no = s, targetAccept = 0.238,
     #                              sigmasq = .01, D = D.noise, stepSize = 1)
     sim <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D.noise, 
-                                    precision = 100, bandwidth = s, 
+                                    precision = 25, bandwidth = s, 
                                     targetAccept = 0.238, stepSize = .1)
     error <- c()
     for (t in 1:100000){
       error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
     }
-    mse_band10000[s, r] <- mean(error)
+    mse_band_hmc[s, r] <- mean(error[-(1:burnin)])
   }
 }
 ```

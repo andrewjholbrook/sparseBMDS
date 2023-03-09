@@ -99,3 +99,13 @@ for (i in 1:items){
     heatmap_grad[j, i] <- endtime[3]
   }
 }
+
+## heatmap results
+heatmap(heatmap_grad[1100:1150, 1100:1150], Rowv = NA, Colv = NA, 
+        xlab = "Number of Locations", ylab = "Number of Bands", 
+        main = "Gradient")
+
+heatmap(heatmap_ll[1100:1150, 1100:1150], Rowv = NA, Colv = NA, 
+        xlab = "Number of Locations", ylab = "Number of Bands",
+        main = "Likelihood", na.rm = TRUE)
+
