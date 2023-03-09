@@ -16,10 +16,10 @@ Create data
 ```{r}
 set.seed(12345)
 Z_ex <- rmvnorm(1000, mean = rep(0, 2), sigma = diag(2))
-D_ex <- as.matrix(dist(Z_ex, diag = TRUE, upper = TRUE))
+D_ex <- as.matrix(dist(Z_ex))
 
 # adding noise to distance matrix
-noise <- matrix(rtruncnorm(1000^2, mean = 0, sd = .1), 1000, 1000) 
+noise <- matrix(rtruncnorm(100^2, mean = 0, sd = .1), 1000, 1000) 
 noise <- (noise + t(noise)) / 2
 diag(noise) <- 0
 D_noise <- noise + D_ex
@@ -28,7 +28,7 @@ D_noise <- noise + D_ex
 Running simulation for Metropolis with fixed sigma
 ```{r}
 set.seed(12345)
-metropolis_results <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, bandwidth = 25, 
+metropolis_results <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, bandwidth = 10, 
                                        precision = 100, targetAccept = 0.238, stepSize = .1)
 # metropolis_results <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, D = D_noise, 
 #                                        sigmasq = .01, band.no = 25, targetAccept = 0.238, stepSize = .1)
@@ -39,38 +39,38 @@ Sanity checks for accuracy
 plot(metropolis_results[ , 1, 1], type = "l")
 
 # traceplot when target function evaluated at thetas 
-set.seed(12345)
-# create engine 
-engine_skelly <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 25, 
-                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
-                                   single = 0, bandwidth = 25)
-engine_skelly <- MassiveMDS::setPairwiseData(engine_test, data = D_noise)
-engine_skelly <- MassiveMDS::setPrecision(engine_test, precision = 100)
-
-s_target_chain_mh <- c()
-for (i in 1:100000){
-  s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_skelly)
-}
+# set.seed(12345)
+# # create engine
+# engine_skelly <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 1000,
+#                                    truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
+#                                    single = 0, bandwidth = 10)
+# engine_skelly <- MassiveMDS::setPairwiseData(engine_skelly, data = D_noise)
+# engine_skelly <- MassiveMDS::setPrecision(engine_skelly, precision = 100)
+# 
+# s_target_chain_mh <- c()
+# for (i in 1:100000){
+#   s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_skelly)
+# }
 
 # for (i in 1:100000){
 #   s_target_chain_mh[i] <- s_target_no_sigma_prior_fast(metropolis_results[i, , ], D_noise, 0.01, 25)
 # }
 
-plot(s_target_chain_mh, type = "l")
-acf(s_target_chain_mh)
-coda::effectiveSize(s_target_chain_mh)
+plot(s_target_chain_mh[-(1:30000)], type = "l")
+acf(s_target_chain_mh[-(1:30000)])
+coda::effectiveSize(s_target_chain_mh[-(1:30000)])
 
 # traceplot for pairwise distances
-s_dist_mat_mh <- array(0, dim = c(100000, 25, 25))
-for (i in 1:100000){
-  s_dist_mat_mh[i, , ] <- as.matrix(dist(metropolis_results[i, , ], diag = TRUE, upper = TRUE))
-}
+# s_dist_mat_mh <- array(0, dim = c(1001, 1000, 1000))
+# for (i in 99000:100000){
+#   s_dist_mat_mh[i - 98999, , ] <- as.matrix(dist(metropolis_results[i, , ]))
+# }
 
 par(mfrow=c(2,2))
 for (i in 1:5){
   for (j in 1:5){
     if (i != j){
-      plot(s_dist_mat_mh[-(1:20000), i, j], type = "l")
+      plot(s_dist_mat_mh[1:500, i, j], type = "l")
       abline(h = D_ex[i, j], col = "red")
     }
   }
@@ -81,7 +81,7 @@ Running simulation for HMC with fixed sigma
 ```{r}
 set.seed(12345)
 hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, precision = 100,
-                                        bandwidth = 7, targetAccept = 0.238, stepSize = .1)
+                                        bandwidth = 10, targetAccept = 0.238, stepSize = .1)
 ```
 
 
@@ -90,9 +90,9 @@ plot(hmc_results[ , 1, 1], type = "l")
 
 # traceplot when target function evaluated at thetas 
 
-engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 1000, 
-                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0, 
-                                   single = 0, bandwidth = 7)
+engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 1000,
+                                   truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
+                                   single = 0, bandwidth = 10)
 engine_plain <- MassiveMDS::setPairwiseData(engine_plain, data = D_noise)
 engine_plain <- MassiveMDS::setPrecision(engine_plain, precision = 100)
 
@@ -106,16 +106,16 @@ acf(s_target_chain_hmc)
 coda::effectiveSize(s_target_chain_hmc[-(1:20000)])
 
 # traceplot for pairwise distances
-s_dist_mat_hmc <- array(0, dim = c(101, 1000, 1000))
-for (i in 99000:100000){
-  s_dist_mat_hmc[i - 99899, , ] <- as.matrix(dist(hmc_results[i, , ], diag = TRUE, upper = TRUE))
+s_dist_mat_hmc <- array(0, dim = c(1001, 1000, 1000))
+for (i in 1:100000){
+  s_dist_mat_hmc[i - 98999, , ] <- as.matrix(dist(hmc_results[i, , ]))
 }
 
 par(mfrow=c(2,2))
 for (i in 1:5){
   for (j in 1:5){
     if (i != j){
-      plot(s_dist_mat_hmc[, i, j], type = "l")
+      plot(s_dist_mat_hmc[-(1:20000), i, j], type = "l")
       abline(h = D_ex[i, j], col = "red")
     }
   }
@@ -151,9 +151,11 @@ for (r in 1:length(samp)){
   }
 }
 ```
+
 ```{r}
 plot(mse_band25[, 1])
 ```
+
 ```{r}
 set.seed(12345)
 samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)

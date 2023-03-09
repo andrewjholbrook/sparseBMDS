@@ -42,9 +42,9 @@ delta <- function(n) {
 
 ##### classical MDS function
 
-cmds <- function(D, dims){
+cmds <- function(data, dims){
   # double center matrix
-  dd <- D^2
+  dd <- data^2
   mndd <- mean(dd)
   rowdd <- dd*0 + rowMeans(dd)
   coldd <- t(dd*0 + colMeans(dd))
