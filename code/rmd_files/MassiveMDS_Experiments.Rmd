@@ -15,11 +15,11 @@ source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
 Create data
 ```{r}
 set.seed(12345)
-Z_ex <- rmvnorm(1000, mean = rep(0, 2), sigma = diag(2))
+Z_ex <- rmvnorm(10, mean = rep(0, 2), sigma = diag(2))
 D_ex <- as.matrix(dist(Z_ex))
 
 # adding noise to distance matrix
-noise <- matrix(rtruncnorm(100^2, mean = 0, sd = .1), 1000, 1000) 
+noise <- matrix(rtruncnorm(10^2, mean = 0, sd = .1), 10, 10) 
 noise <- (noise + t(noise)) / 2
 diag(noise) <- 0
 D_noise <- noise + D_ex
@@ -81,7 +81,8 @@ Running simulation for HMC with fixed sigma
 ```{r}
 set.seed(12345)
 hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, precision = 100,
-                                        bandwidth = 10, targetAccept = 0.238, stepSize = .1)
+                                        bandwidth = 10, targetAccept = 0.65, stepSize = .1, 
+                                        thin = 100)
 ```
 
 
@@ -90,32 +91,32 @@ plot(hmc_results[ , 1, 1], type = "l")
 
 # traceplot when target function evaluated at thetas 
 
-engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 1000,
+engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 10,
                                    truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
                                    single = 0, bandwidth = 10)
 engine_plain <- MassiveMDS::setPairwiseData(engine_plain, data = D_noise)
 engine_plain <- MassiveMDS::setPrecision(engine_plain, precision = 100)
 
 s_target_chain_hmc <- c()
-for (i in 1:100000){
+for (i in 1:dim(hmc_results)[1]){
   s_target_chain_hmc[i] <- s_target_no_sigma_prior(locations = hmc_results[i, , ], engine_plain)
 }
 
-plot(s_target_chain_hmc[-(1:20000)], type = "l")
+plot(s_target_chain_hmc, type = "l")
 acf(s_target_chain_hmc)
-coda::effectiveSize(s_target_chain_hmc[-(1:20000)])
+coda::effectiveSize(s_target_chain_hmc)
 
 # traceplot for pairwise distances
-s_dist_mat_hmc <- array(0, dim = c(1001, 1000, 1000))
-for (i in 1:100000){
-  s_dist_mat_hmc[i - 98999, , ] <- as.matrix(dist(hmc_results[i, , ]))
+s_dist_mat_hmc <- array(0, dim = c(dim(hmc_results)[1], 10, 10))
+for (i in 1:1:dim(hmc_results)[1]){
+  s_dist_mat_hmc[i, , ] <- as.matrix(dist(hmc_results[i, , ]))
 }
 
 par(mfrow=c(2,2))
 for (i in 1:5){
   for (j in 1:5){
     if (i != j){
-      plot(s_dist_mat_hmc[-(1:20000), i, j], type = "l")
+      plot(s_dist_mat_hmc[, i, j], type = "l")
       abline(h = D_ex[i, j], col = "red")
     }
   }
@@ -126,12 +127,13 @@ Capturing MSE as a function of band # with fixed sigma = 0.01 & cmds as initial 
 
 ```{r}
 set.seed(12345)
-samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)
-mse_band_hmc <- matrix(NA, nrow = max(samp), ncol = length(samp))
+#samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)
+#mse_band_hmc <- matrix(NA, nrow = max(samp), ncol = length(samp))
+mse_band10000 <- c()
 burnin <- 20000
 
-for (r in 1:length(samp)){
-  n <- samp[r]
+#for (r in 1:length(samp)){
+  n <- 10000#samp[r]
   Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, 2), sigma = diag(2)) # dims = 2, n = 25
   D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
   noise <- matrix(rtruncnorm(n^2, mean = 0, sd = .2), n, n) 
@@ -148,13 +150,16 @@ for (r in 1:length(samp)){
     for (t in 1:100000){
       error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
     }
-    mse_band_hmc[s, r] <- mean(error[-(1:burnin)])
+    mse_band_hmc[s, 3] <- mean(error[-(1:burnin)])
   }
-}
+#}
 ```
 
 ```{r}
-plot(mse_band25[, 1])
+par(mfrow=c(2,2))
+plot(mse_band_hmc[1:10, 1], main = "N = 10, BAND = 10, SD = .2")
+plot(mse_band_hmc[1:10, 2], main = "N = 100, BAND = 10, SD = .2")
+plot(mse_band_hmc[1:15, 3], main = "N = 1000, BAND = 10, SD = .2")
 ```
 
 ```{r}

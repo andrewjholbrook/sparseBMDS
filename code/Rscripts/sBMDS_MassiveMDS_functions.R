@@ -133,7 +133,7 @@ sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
 ##### non-adaptive sigma, adaptive latent variable, HMC
 
 sbmds_nonadapt_sigma_hmc <- function(maxIts, dims, data, bandwidth, precision,
-                                     targetAccept = 0.8, stepSize = 1) {
+                                     targetAccept = 0.8, stepSize = 1, thin = 1) {
 
   n <- dim(data)[1]
   engine_test <- MassiveMDS::createEngine(embeddingDimension = dims, locationCount = n,
@@ -145,15 +145,18 @@ sbmds_nonadapt_sigma_hmc <- function(maxIts, dims, data, bandwidth, precision,
 
   # initializations for latent variable
   chain <- array(0, dim = c(maxIts, n, dims))
+  chain_thin <- array(0, dim = c((maxIts / thin) + 1, n, dims))
   acceptances <- 0
   totalaccept <- rep(0, maxIts)
   SampCount <- 0
   SampBound <- 50   # current total samples before adapting radius
+  thinCount <- 1
 
   L <- 20 # number of leapfrog steps
 
   # random starting point for latent variables and sigma
   chain[1, , ] <- cmds(data, dims) #mvtnorm::rmvnorm(n, mean = rep(0, dims), diag(dims))
+  chain_thin[1, , ] <- chain[1, , ]
 
   # U(q0) = - log posterior
   currentU <- - s_target_no_sigma_prior(location = chain[1, , ], engine = engine_test)
@@ -206,12 +209,17 @@ sbmds_nonadapt_sigma_hmc <- function(maxIts, dims, data, bandwidth, precision,
       SampCount <- 0
       acceptances <- 0
     }
+    
+    if (i %% thin == 0){
+      thinCount <- thinCount + 1
+      chain_thin[thinCount, , ] <- chain[i, , ]
+    }
 
     if (i %% 100 == 0) cat("Iteration ", i, "\n","stepSize: ", stepSize, "\n")
   }
 
   cat("Acceptance rate: ", sum(totalaccept)/(maxIts - 1))
 
-  return(chain)
+  return(chain_thin)
 }
 
