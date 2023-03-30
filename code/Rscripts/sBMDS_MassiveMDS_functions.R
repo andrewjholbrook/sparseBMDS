@@ -63,7 +63,7 @@ cmds <- function(data, dims){
 ##### non-adaptive sigma, adaptive latent variable, Metropolis
 
 sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
-                             targetAccept = 0.8, stepSize = 1) {
+                             targetAccept = 0.8, stepSize = 1, thin = 1) {
 
   n <- dim(data)[1]
   engine_test <- MassiveMDS::createEngine(embeddingDimension = dims, locationCount = n,
@@ -75,15 +75,18 @@ sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
 
   # create the chain
   chain <- array(0, dim = c(maxIts, n, dims))
-
+  chain_thin <- array(0, dim = c((maxIts / thin) + 1, n, dims))
+  
   # specify the first random value
   #chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
   chain[1, , ] <- cmds(data, dims)
+  chain_thin[1, , ] <- chain[1, , ]
 
   totalAccept <- rep(0, maxIts)
   Acceptances = 0 # total acceptances within adaptation run (<= SampBound)
   SampBound = 50   # current total samples before adapting radius
   SampCount = 0   # number of samples collected (adapt when = SampBound)
+  thinCount = 1 # account for first chain specified
 
   for (s in 2:maxIts) {
 
@@ -121,13 +124,18 @@ sbmds_metropolis <- function(maxIts, dims, data, bandwidth, precision,
       SampCount <- 0
       Acceptances <- 0
     }
-
+    
+    if (s %% thin == 0){
+      thinCount <- thinCount + 1
+      chain_thin[thinCount, , ] <- chain[s, , ]
+    }
+    
     if (s %% 100 == 0) cat("Iteration ", s, "\n","stepSize: ", stepSize, "\n")
   }
-
+  
   cat("Acceptance rate: ", sum(totalAccept)/(maxIts - 1))
 
-  return(chain)
+  return(chain_thin)
 }
 
 ##### non-adaptive sigma, adaptive latent variable, HMC
@@ -150,7 +158,7 @@ sbmds_nonadapt_sigma_hmc <- function(maxIts, dims, data, bandwidth, precision,
   totalaccept <- rep(0, maxIts)
   SampCount <- 0
   SampBound <- 50   # current total samples before adapting radius
-  thinCount <- 1
+  thinCount <- 1 # account for first chain specified 
 
   L <- 20 # number of leapfrog steps
 
