@@ -145,18 +145,19 @@ burnin <- 200
   noise <- (noise + t(noise)) / 2
   diag(noise) <- 0
   D.noise <- noise + D.sim
-  for (s in 1:10){
+  #for (s in 1:10){
     # sim <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, band.no = s, targetAccept = 0.238,
     #                              sigmasq = .01, D = D.noise, stepSize = 1)
     sim <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D.noise, 
-                                    precision = 100, bandwidth = s, 
+                                    precision = 100, bandwidth = 12, 
                                     targetAccept = 0.65, stepSize = .1, thin = 100)
     error <- c()
     for (t in 1:1001){
-      error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
+      subset <- sample(1000)
+      error[t] <- mean((as.matrix(dist(sim[t, subset, ])) - as.matrix(dist(Z.sim[subset, ])))^2)
     }
-    mse_band_hmc_10000[s] <- mean(error[-(1:burnin)])
-  }
+    mse_band_hmc_10000 <- mean(error[-(1:burnin)])
+  #}
 #}
 ```
 

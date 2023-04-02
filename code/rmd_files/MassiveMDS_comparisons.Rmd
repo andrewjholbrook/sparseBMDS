@@ -1,0 +1,147 @@
+---
+title: "sBMDS Computational Efficiency"
+author: "Ami Sheth"
+date: "2023-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import libraries 
+```{r}
+library(MassiveMDS)
+library(mvtnorm)
+library(truncnorm)
+library(tidyverse)
+```
+
+Source functions
+```{r}
+source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
+```
+
+Simulate data
+```{r}
+set.seed(12345)
+Z_ex <- rmvnorm(100, mean = rep(0, 2), sigma = diag(2))
+D_ex <- as.matrix(dist(Z_ex))
+
+# adding noise to distance matrix
+noise <- matrix(rtruncnorm(100^2, mean = 0, sd = .1), 100, 100) 
+noise <- (noise + t(noise)) / 2
+diag(noise) <- 0
+D_noise <- noise + D_ex
+```
+
+
+Method 1: Full likelihood Metropolis-Hastings (FMH)
+```{r}
+set.seed(12345)
+# time
+start_fmh <- proc.time()
+full_fmh <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, 
+                            bandwidth = 100, precision = 100, 
+                            targetAccept = 0.238, stepSize = .1, thin = 1)
+end_fmh <- proc.time() - start_fmh
+
+# effective sample size 
+## calculate a distance matrix
+dist_mat_fmh <- array(0, dim = c(100000, 100, 100))
+
+for (j in 1:100000){
+  dist_mat_fmh[j, , ] <- as.matrix(dist(full_fmh[j, , ]))
+  #dist_mat_fmh[j - 1, , ] <- as.matrix(dist(full_fmh[j, , ]))
+}
+
+miness_fmh <- 100000
+for (k in 1:100){
+  ess <- min(coda::effectiveSize(dist_mat_fmh[-(1:20000), -k, k]))
+  if (ess < miness_fmh){
+    miness_fmh <- ess
+  }
+}
+
+# efficiency 
+
+miness_fmh / end_fmh[3] # effective sample size per second
+```
+
+Method 2: Full likelihood Hamiltonian Monte Carlo (FHMC)
+```{r}
+set.seed(12345)
+# time
+start_fhmc <- proc.time()
+full_fhmc <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, 
+                                      bandwidth = 100, precision = 100, 
+                                      targetAccept = 0.65, stepSize = .1, thin = 100)
+end_fhmc <- proc.time() - start_fhmc
+
+# effective sample size 
+## calculate a distance matrix
+dist_mat_fhmc <- array(0, dim = c(1000, 100, 100))
+
+for (j in 2:1001){
+  dist_mat_fhmc[j - 1, , ] <- as.matrix(dist(full_fhmc[j, , ]))
+}
+
+miness_fhmc <- 100000
+for (k in 1:100){
+  ess <- min(coda::effectiveSize(dist_mat_fhmc[-(1:200), -k, k]))
+  if (ess < miness_fhmc){
+    miness_fhmc <- ess
+  }
+}
+
+# efficiency 
+
+miness_fhmc / end_fhmc[3] # effective sample size per second
+```
+
+Method 3: Sparse likelihood MH
+
+```{r}
+set.seed(12345)
+# time
+start_smh <- proc.time()
+full_smh <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, 
+                            bandwidth = 10, precision = 100, 
+                            targetAccept = 0.238, stepSize = .1, thin = 1)
+end_smh <- proc.time() - start_smh
+
+# effective sample size 
+## calculate a distance matrix
+dist_mat_smh <- array(0, dim = c(100000, 100, 100))
+
+for (j in 1:100000){
+  dist_mat_smh[j, , ] <- as.matrix(dist(full_smh[j, , ]))
+  #dist_mat_fmh[j - 1, , ] <- as.matrix(dist(full_fmh[j, , ]))
+}
+
+miness_smh <- 100000
+for (k in 1:100){
+  ess <- min(coda::effectiveSize(dist_mat_smh[-(1:20000), -k, k]))
+  if (ess < miness_smh){
+    miness_smh <- ess
+  }
+}
+
+# efficiency 
+
+miness_smh / end_smh[3] # effective sample size per second
+```
+
+
+Method 4: Sparse likelihood but full gradient HMC
+
+```{r}
+
+```
+
+Method 5: Sparse likeihood & sparse gradient HMC 
+
+```{r}
+
+```
+
