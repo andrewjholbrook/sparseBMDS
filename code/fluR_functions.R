@@ -125,6 +125,7 @@ hmcsampler <- function(n_iter,                  # number of MCMC samples
                        StepSize = 0.01,
                        StepSizeSigma = 0.01,
                        traitInvWeight = 1,      # how often to update TraitPrec
+                       mdsWeight = 1, 
                        # how much tree to dictate covariance
                        priorRootSampleSize = 0.001, 
                        # if learnPrec = FALSE then mdsPrecision=1.47 (??)
@@ -142,28 +143,30 @@ hmcsampler <- function(n_iter,                  # number of MCMC samples
   
   # Set up the parameters
   NumOfIterations = n_iter
-  NumOfLeapfrog = 4
+  NumOfLeapfrog = 8
   P <- latentDimension
   N <- dim(beast$treeVcvRand)[1]
   #treePrec <- solve(beast$treeVcv)
   treeVcv.chol <- chol(beast$treeVcvRand)
   treePrec <- chol2inv(treeVcv.chol)
   #treePrecDet <- determinant(beast$treeVcv, logarithm = TRUE)$modulus
-  beast$traitVcv <- diag(P) # initial est of traitVcv
+  beast$traitVcv <- diag(P) * 5000 # initial est of traitVcv
   beast$d0 <- P # Wishart prior df on traitVcv
   beast$traitT0 <- diag(P) # Wishart prior cov on traitVcv
   
   # Allocate output space
   LocationSaved = list()
-  locframe <- as.data.frame(matrix(NA, ncol = P * N)) # saving location
+  locframe <- matrix(NA, ncol = P * N) # saving location
   Target = vector()
   mdsPrec <- rep(0, n_iter) # for the mds precision
   traitPrec <- array(0, dim = c(n_iter, P, P)) # for Vinv (p x p) from MN
   
   # Initial estimates
   set.seed(666)
-  locations <- cmds(data, P) + matrix(rnorm(N * P, mean = 0, sd = .1), 
-                                      nrow = N, ncol = P) #cmds(data, P)
+  locations <- cmds(data, P) + matrix(rnorm(N * P, mean = 0, sd = .01),
+                                      nrow = N, ncol = P)
+  
+  #locations <- hmcfull_loc
   
   # Build reusable object to compute log-likelihood (gradient), i.e., engines
   # engine uses all bands, engine_lf uses sparse_bands
@@ -204,23 +207,23 @@ hmcsampler <- function(n_iter,                  # number of MCMC samples
                          mdsprecision = mdsPrec[Iteration])
     
     if (Iteration > burnIn & Iteration %% thin == 0){
-      
+
       traitCov <- solve(traitPrec[Iteration, , ])
       traitCovframe <- data.frame(r1c1 = traitCov[1, 1],
                                   r1c2 = traitCov[1, 2],
                                   r2c1 = traitCov[2, 1],
                                   r2c2 = traitCov[2, 2])
-      write.table(traitCovframe, file = "latent_covL4D2.csv", append = TRUE,
+      write.table(traitCovframe, file = "latent_cov.csv", append = TRUE,
                   row.names = FALSE, col.names = FALSE, sep = ',')
-      
-      chain_other <- data.frame(time = proc.time()[3], target = CurrentU,
+
+      chain_other <- data.frame(time = proc.time()[3] - timer[3], target = CurrentU,
                                 mdsPrecision = mdsPrec[Iteration])
-      write.table(chain_other, file = "chain_otherL4D2.csv", append = TRUE,
+      write.table(chain_other, file = "chain_other.csv", append = TRUE,
                   row.names = FALSE, col.names = FALSE, sep = ',')
-      
+
       locframe[1, ] <- as.vector(CurrentLocation)
-      
-      write.table(as.data.frame(locframe), file = "latent_coordL4D2.csv",
+
+      write.table(as.data.frame(locframe), file = "latent_coord.csv",
                   append = TRUE, row.names = FALSE, col.names = FALSE,
                   sep = ',')
     }
@@ -325,35 +328,40 @@ hmcsampler <- function(n_iter,                  # number of MCMC samples
     
     # MH step for residual precision
     if (Iteration < n_iter) {
-      prec_star <- truncnorm::rtruncnorm(1, a = 0, b = Inf,
-                                         mean = mdsPrec[Iteration],
-                                         sd = StepSizeSigma) # proposal dist, has to be pos
-      ProposedU = Potential(engine, CurrentLocation, 
-                            #treePrecDet = treePrecDet,
-                            treePrec = treePrec,
-                            #traitVcv = solve(traitPrec[Iteration, , ]),
-                            traitPrec = traitPrec[Iteration, , ],
-                            mdsprecision = prec_star) # g(prec_star)
-      
-      # comparing new and old sigma with current chain, not a symmetric proposal
-      Ratio = - ProposedU + CurrentU +
-        log(truncnorm::dtruncnorm(x = mdsPrec[Iteration], a = 0, b = Inf,
-                                  mean = prec_star, sd = StepSizeSigma)) -
-        log(truncnorm::dtruncnorm(x = prec_star, a = 0, b = Inf,
-                                  mean = mdsPrec[Iteration], sd = StepSizeSigma))
-      
-      ProposePrec = ProposePrec + 1
-      
-      if (log(runif(1)) < Ratio) { 
-        mdsPrec[Iteration + 1] <- prec_star
-        AcceptPrec <- AcceptPrec + 1
+      if (Iteration %% mdsWeight == 0){
+        prec_star <- truncnorm::rtruncnorm(1, a = 0, b = Inf,
+                                           mean = mdsPrec[Iteration],
+                                           sd = StepSizeSigma) # proposal dist, has to be pos
+        ProposedU = Potential(engine, CurrentLocation, 
+                              #treePrecDet = treePrecDet,
+                              treePrec = treePrec,
+                              #traitVcv = solve(traitPrec[Iteration, , ]),
+                              traitPrec = traitPrec[Iteration, , ],
+                              mdsprecision = prec_star) # g(prec_star)
+        
+        # comparing new and old sigma with current chain, not a symmetric proposal
+        Ratio = - ProposedU + CurrentU +
+          log(truncnorm::dtruncnorm(x = mdsPrec[Iteration], a = 0, b = Inf,
+                                    mean = prec_star, sd = StepSizeSigma)) -
+          log(truncnorm::dtruncnorm(x = prec_star, a = 0, b = Inf,
+                                    mean = mdsPrec[Iteration], sd = StepSizeSigma))
+        
+        ProposePrec = ProposePrec + 1
+        
+        if (log(runif(1)) < Ratio) { 
+          mdsPrec[Iteration + 1] <- prec_star
+          AcceptPrec <- AcceptPrec + 1
+        } else {
+          mdsPrec[Iteration + 1] <- mdsPrec[Iteration]
+          # engine <- MassiveMDS::setPrecision(engine, precision[Iteration])
+          # replace engine back to previous precision, o.w. already updated above
+        }
       } else {
         mdsPrec[Iteration + 1] <- mdsPrec[Iteration]
-        # engine <- MassiveMDS::setPrecision(engine, precision[Iteration])
-        # replace engine back to previous precision, o.w. already updated above
       }
       
-      if (Iteration %% 50 == 0) { # print MH acceptances
+      if (ProposePrec == 50){ # update sigma after we propose 50 times
+        
         cat(Iteration, "iterations completed. Prec acceptance rate: ",
             AcceptPrec/ProposePrec,"\n", "StepSizeSigma", StepSizeSigma, "\n")
         
@@ -362,7 +370,6 @@ hmcsampler <- function(n_iter,                  # number of MCMC samples
         } else {
           StepSizeSigma <- StepSizeSigma * (1 - delta(Iteration))
         }
-        
         ProposePrec = 0
         AcceptPrec = 0
       }
