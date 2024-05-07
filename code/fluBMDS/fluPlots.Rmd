@@ -1,0 +1,413 @@
+## libraries
+```{r}
+library(tidyverse)
+```
+
+## import data
+```{r}
+# full data for latent covariance 
+h1_cov <- read_csv("fluOutput/latent_covh1.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_cov <- read_csv("fluOutput/latent_covh3.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_cov <- read_csv("fluOutput/latent_covvic.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_cov <- read_csv("fluOutput/latent_covyam.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# full data for time, sd, target fct
+h1_ow <- read_csv("fluOutput/chain_otherh1.csv", 
+                  col_names = c("time", "target", "prec"))
+h3_ow <- read_csv("fluOutput/chain_otherh3.csv", 
+                  col_names = c("time", "target", "prec"))
+vic_ow <- read_csv("fluOutput/chain_othervic.csv", 
+                   col_names = c("time", "target", "prec"))
+yam_ow <- read_csv("fluOutput/chain_otheryam.csv", 
+                   col_names = c("time", "target", "prec"))
+```
+```{r}
+# sparse band data for latent covariance 
+h1_Fcov50 <- read_csv("fluOutput/latent_covFh150.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Fcov50 <- read_csv("fluOutput/latent_covFh350.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Fcov50 <- read_csv("fluOutput/latent_covFvic50.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Fcov50 <- read_csv("fluOutput/latent_covFyam50.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse band data for time, sd, target fct
+h1_Fow50 <- read_csv("fluOutput/chain_otherFh150.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Fow50 <- read_csv("fluOutput/chain_otherFh350.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Fow50 <- read_csv("fluOutput/chain_otherFvic50.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Fow50 <- read_csv("fluOutput/chain_otherFyam50.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+```{r}
+# sparse band data for latent covariance 
+h1_Fcov100 <- read_csv("fluOutput/latent_covFh1100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Fcov100 <- read_csv("fluOutput/latent_covFh3100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Fcov100 <- read_csv("fluOutput/latent_covFvic100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Fcov100 <- read_csv("fluOutput/latent_covFyam100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse band data for time, sd, target fct
+h1_Fow100 <- read_csv("fluOutput/chain_otherFh1100.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Fow100 <- read_csv("fluOutput/chain_otherFh3100.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Fow100 <- read_csv("fluOutput/chain_otherFvic100.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Fow100 <- read_csv("fluOutput/chain_otherFyam100.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+```{r}
+# sparse band data for latent covariance 
+h1_Fcov200 <- read_csv("fluOutput/latent_covFh1200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Fcov200 <- read_csv("fluOutput/latent_covFh3200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Fcov200 <- read_csv("fluOutput/latent_covFvic200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Fcov200 <- read_csv("fluOutput/latent_covFyam200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse band data for time, sd, target fct
+h1_Fow200 <- read_csv("fluOutput/chain_otherFh1200.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Fow200 <- read_csv("fluOutput/chain_otherFh3200.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Fow200 <- read_csv("fluOutput/chain_otherFvic200.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Fow200 <- read_csv("fluOutput/chain_otherFyam200.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+
+```{r}
+# sparse landmark data for latent covariance 
+h1_Tcov50 <- read_csv("fluOutput/latent_covTh150.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Tcov50 <- read_csv("fluOutput/latent_covTh350.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Tcov50 <- read_csv("fluOutput/latent_covTvic50.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Tcov50 <- read_csv("fluOutput/latent_covTyam50.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse landmark data for time, sd, target fct
+h1_Tow50 <- read_csv("fluOutput/chain_otherTh150.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Tow50 <- read_csv("fluOutput/chain_otherTh350.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Tow50 <- read_csv("fluOutput/chain_otherTvic50.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Tow50 <- read_csv("fluOutput/chain_otherTyam50.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+```{r}
+# sparse band data for latent covariance 
+h1_Tcov100 <- read_csv("fluOutput/latent_covTh1100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Tcov100 <- read_csv("fluOutput/latent_covTh3100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Tcov100 <- read_csv("fluOutput/latent_covTvic100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Tcov100 <- read_csv("fluOutput/latent_covTyam100.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse band data for time, sd, target fct
+h1_Tow100 <- read_csv("fluOutput/chain_otherTh1100.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Tow100 <- read_csv("fluOutput/chain_otherTh3100.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Tow100 <- read_csv("fluOutput/chain_otherTvic100.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Tow100 <- read_csv("fluOutput/chain_otherTyam100.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+```{r}
+# sparse band data for latent covariance 
+h1_Tcov200 <- read_csv("fluOutput/latent_covTh1200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H1N1", SED = rowSums(select(., 1:6)) / 12.9)
+h3_Tcov200 <- read_csv("fluOutput/latent_covTh3200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "H3N2", SED = rowSums(select(., 1:6)) / 14.2)
+vic_Tcov200 <- read_csv("fluOutput/latent_covTvic200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "VIC", SED = rowSums(select(., 1:6)) / 15.4)
+yam_Tcov200 <- read_csv("fluOutput/latent_covTyam200.csv", col_names = FALSE) %>% 
+  mutate(., virus = "YAM", SED = rowSums(select(., 1:6)) / 17.75)
+
+# sparse band data for time, sd, target fct
+h1_Tow200 <- read_csv("fluOutput/chain_otherTh1200.csv", 
+                     col_names = c("time", "target", "prec"))
+h3_Tow200 <- read_csv("fluOutput/chain_otherTh3200.csv", 
+                     col_names = c("time", "target", "prec"))
+vic_Tow200 <- read_csv("fluOutput/chain_otherTvic200.csv", 
+                      col_names = c("time", "target", "prec"))
+yam_Tow200 <- read_csv("fluOutput/chain_otherTyam200.csv", 
+                      col_names = c("time", "target", "prec"))
+```
+
+## combine data
+```{r}
+virus_cov <- bind_rows(h1_cov, h3_cov, vic_cov, yam_cov)
+virus_Fcov50 <- bind_rows(h1_Fcov50, h3_Fcov50, vic_Fcov50, yam_Fcov50)
+virus_Tcov50 <- bind_rows(h1_Tcov50, h3_Tcov50, vic_Tcov50, yam_Tcov50)
+virus_Fcov100 <- bind_rows(h1_Fcov100, h3_Fcov100, vic_Fcov100, yam_Fcov100)
+virus_Tcov100 <- bind_rows(h1_Tcov100, h3_Tcov100, vic_Tcov100, yam_Tcov100)
+virus_Fcov200 <- bind_rows(h1_Fcov200, h3_Fcov200, vic_Fcov200, yam_Fcov200)
+virus_Tcov200 <- bind_rows(h1_Tcov200, h3_Tcov200, vic_Tcov200, yam_Tcov200)
+```
+
+## plot density curve
+```{r}
+pal <- c("H1N1" = "orangered2",  "YAM" = "darkgoldenrod1",  "VIC" = "darkcyan", 
+          "H3N2" = "navyblue")
+
+# full case
+full_cov <- virus_cov %>% 
+  ggplot(aes(SED, fill = virus)) +
+  geom_density(alpha = 0.75, adjust = 1.5) + 
+  xlim(550, 1050) + 
+  labs(x = NULL, y = NULL, title = "Full/HMC") + 
+  theme_bw() + 
+  scale_fill_manual(values = pal, name = NULL, 
+                    breaks = c("VIC", "YAM", "H1N1", "H3N2")) +
+  theme(legend.spacing.y = unit(0.75, "cm"), plot.title = element_text(size = 10)) +
+  guides(fill = guide_legend(byrow = TRUE))
+
+# sparse band case
+band_cov <- virus_Fcov50 %>% 
+  ggplot(aes(SED, fill = virus)) +
+  geom_density(alpha = 0.75, adjust = 1.5) + 
+  xlim(550, 1050) + 
+  labs(x = NULL, y = NULL, title = "B-sBMDS/HMC") + 
+  theme_bw() + 
+  scale_fill_manual(values = pal, name = NULL, 
+                    breaks = c("VIC", "YAM", "H1N1", "H3N2")) +
+  theme(legend.spacing.y = unit(0.75, "cm"), plot.title = element_text(size = 10)) +
+  guides(fill = guide_legend(byrow = TRUE))
+
+# sparse landmark case
+# lm_cov <- virus_Tcov50 %>% 
+#   ggplot(aes(SED, fill = virus)) +
+#   geom_density(alpha = 0.75, adjust = 1.5) + 
+#   #xlim(550, 1050) + 
+#   labs(x = "Squared effective distance units per year", y = "Posterior density",
+#        title = "Inferred diffusion rates using landmarks") + 
+#   theme_bw() + 
+#   scale_fill_manual(values = pal, name = NULL, 
+#                     breaks = c("VIC", "YAM", "H1N1", "H3N2")) +
+#   theme(legend.spacing.y = unit(1, "cm")) +
+#   guides(fill = guide_legend(byrow = TRUE))
+```
+```{r}
+flu.SED <- ggpubr::ggarrange(full_cov, band_cov, common.legend = TRUE, 
+                             legend = "right") %>% 
+  ggpubr::annotate_figure(., top = "Inferred diffusion rates", 
+                          bottom = "Squared effective distance units per year", 
+                          left = "Posterior density")
+ggsave("fluSED.png", flu.SED, bg = "white", width = 7, height = 3)
+```
+```{r}
+ggsave("full_cov.png", full_cov, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
+ggsave("band_cov200.png", band_cov, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
+ggsave("lm_cov200.png", lm_cov, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
+```
+```{r}
+full_cov
+band_cov
+```
+
+```{r}
+band_cov100 <- virus_Fcov100 %>% 
+  ggplot(aes(SED, fill = virus)) +
+  geom_density(alpha = 0.75, adjust = 1.5) + 
+  xlim(550, 1050) + 
+  labs(x = NULL, y = NULL, title = "B-sBMDS/HMC (100)") + 
+  theme_bw() + 
+  scale_fill_manual(values = pal, name = NULL, 
+                    breaks = c("VIC", "YAM", "H1N1", "H3N2")) +
+  theme(legend.spacing.y = unit(0.75, "cm"), plot.title = element_text(size = 10)) +
+  guides(fill = guide_legend(byrow = TRUE))
+
+band_cov200 <- virus_Fcov200 %>% 
+  ggplot(aes(SED, fill = virus)) +
+  geom_density(alpha = 0.75, adjust = 1.5) + 
+  xlim(550, 1050) + 
+  labs(x = NULL, y = NULL, title = "B-sBMDS/HMC (200)") + 
+  theme_bw() + 
+  scale_fill_manual(values = pal, name = NULL, 
+                    breaks = c("VIC", "YAM", "H1N1", "H3N2")) +
+  theme(legend.spacing.y = unit(0.75, "cm"), plot.title = element_text(size = 10)) +
+  guides(fill = guide_legend(byrow = TRUE))
+```
+```{r}
+bandextra <- ggpubr::ggarrange(band_cov100, band_cov200, legend = "right", 
+                               common.legend = TRUE) %>% 
+  ggpubr::annotate_figure(., top = "Inferred diffusion rates", 
+                          bottom = "Squared effective distance units per year", 
+                          left = "Posterior density")
+ggsave("fluSEDextra.png", bandextra, bg = "white", width = 7, height = 3)
+```
+
+
+## comparison of diffusion distance 
+```{r}
+#install.packages("distrEx")
+library(distrEx)
+
+h1dist <- DiscreteDistribution(supp = density(h1_cov$SED)$x, 
+                               prob = density(h1_cov$SED)$y / sum(density(h1_cov$SED)$y))
+#h1dist <- EmpiricalDistribution(h1_cov$SED)
+h1Fdist <- DiscreteDistribution(supp = density(h1_Fcov50$SED)$x, 
+                               prob = density(h1_Fcov50$SED)$y / sum(density(h1_Fcov50$SED)$y))
+#h1Fdist <- EmpiricalDistribution(h1_Fcov50$SED)
+h1Tdist <- EmpiricalDistribution(h1_Tcov50$SED)
+h3dist <- EmpiricalDistribution(h3_cov$SED)
+h3Fdist <- EmpiricalDistribution(h3_Fcov50$SED)
+h3Tdist <- EmpiricalDistribution(h3_Tcov50$SED)
+
+distrEx::TotalVarDist(h1dist, h1Fdist)
+distrEx::TotalVarDist(h1dist, h1Tdist)
+distrEx::TotalVarDist(h3dist, h3Fdist)
+distrEx::TotalVarDist(h3dist, h3Tdist)
+distrEx::TotalVarDist(h1dist, h1dist)
+plot(h1dist)
+plot(h1Tdist)
+
+density(h1_cov$SED)$x
+sum(density(h1_cov$SED)$y)
+
+plot(h1dist)
+plot(h1Fdist)
+
+ks.test(h1_cov$SED, h1_Fcov50$SED) # 200B, pval = .14, same dist
+ks.test(h1_cov$SED, h1_Tcov50$SED) # 200L, pval = .00012, diff dist
+ks.test(h3_cov$SED, h3_Fcov50$SED) # 200B, pval <.05, diff dist
+ks.test(h3_cov$SED, h3_Tcov50$SED) # 200L, pval < .05, diff dist 
+ks.test(vic_cov$SED, vic_Fcov50$SED) # 200B, pval = .77, same diff
+ks.test(vic_cov$SED, vic_Tcov50$SED) # 200L, pval = .0496, diff?
+ks.test(yam_cov$SED, yam_Fcov50$SED) # 200B, pval < .05, diff
+ks.test(yam_cov$SED, yam_Tcov50$SED) # 200L, pval < 0.05, diff 
+# all except h3 band 100 has pval < .05
+# all different for 50B & 50L
+
+#install.packages("statip")
+library(statip)
+statip::hellinger(h1_cov$SED, h1_Fcov50$SED, method = 1)
+statip::hellinger(h1_cov$SED, h1_Tcov50$SED, method = 1)
+
+statip::hellinger(h3_cov$SED, h3_Fcov50$SED, method = 1)
+statip::hellinger(h3_cov$SED, h3_Tcov50$SED, method = 1)
+
+statip::hellinger(vic_cov$SED, vic_Fcov50$SED, method = 1)
+statip::hellinger(vic_cov$SED, vic_Tcov50$SED, method = 1)
+
+statip::hellinger(yam_cov$SED, yam_Fcov50$SED, method = 1)
+statip::hellinger(yam_cov$SED, yam_Tcov50$SED, method = 1)
+
+library(textmineR)
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Fcov50$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Fcov50$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Fcov50$SED) + 
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Fcov50$SED)
+
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Fcov100$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Fcov100$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Fcov100$SED) + 
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Fcov100$SED)
+
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Fcov200$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Fcov200$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Fcov200$SED) +
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Fcov200$SED)
+
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Tcov50$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Tcov50$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Tcov50$SED) + 
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Tcov50$SED)
+
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Tcov100$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Tcov100$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Tcov100$SED) + 
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Tcov100$SED)
+
+textmineR::CalcHellingerDist(h1_cov$SED, h1_Tcov200$SED) +
+textmineR::CalcHellingerDist(h3_cov$SED, h3_Tcov200$SED) +
+textmineR::CalcHellingerDist(vic_cov$SED, vic_Tcov200$SED) +
+textmineR::CalcHellingerDist(yam_cov$SED, yam_Tcov200$SED)
+```
+
+
+## effective sample size per hour 
+```{r}
+coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600
+coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600
+coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600
+coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600
+```
+```{r}
+summary(c((coda::effectiveSize(h1_Fcov50$SED) / (h1_Fow50$time[nrow(h1_Fow50)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Fcov50$SED) / (h3_Fow50$time[nrow(h3_Fow50)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Fcov50$SED) / (vic_Fow50$time[nrow(vic_Fow50)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600),
+coda::effectiveSize(yam_Fcov50$SED) / (yam_Fow50$time[nrow(yam_Fow50)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+```{r}
+summary(c((coda::effectiveSize(h1_Fcov100$SED) / (h1_Fow100$time[nrow(h1_Fow100)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Fcov100$SED) / (h3_Fow100$time[nrow(h3_Fow100)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Fcov100$SED) / (vic_Fow100$time[nrow(vic_Fow100)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600),
+coda::effectiveSize(yam_Fcov100$SED) / (yam_Fow100$time[nrow(yam_Fow100)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+```{r}
+summary(c((coda::effectiveSize(h1_Fcov200$SED) / (h1_Fow200$time[nrow(h1_Fow200)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Fcov200$SED) / (h3_Fow200$time[nrow(h3_Fow200)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Fcov200$SED) / (vic_Fow200$time[nrow(vic_Fow200)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600), 
+coda::effectiveSize(yam_Fcov200$SED) / (yam_Fow200$time[nrow(yam_Fow200)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+
+
+```{r}
+summary(c((coda::effectiveSize(h1_Tcov50$SED) / (h1_Tow50$time[nrow(h1_Tow50)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Tcov50$SED) / (h3_Tow50$time[nrow(h3_Tow50)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Tcov50$SED) / (vic_Tow50$time[nrow(vic_Tow50)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600),
+coda::effectiveSize(yam_Tcov50$SED) / (yam_Tow50$time[nrow(yam_Tow50)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+```{r}
+summary(c((coda::effectiveSize(h1_Tcov100$SED) / (h1_Tow100$time[nrow(h1_Tow100)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Tcov100$SED) / (h3_Tow100$time[nrow(h3_Tow100)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Tcov100$SED) / (vic_Tow100$time[nrow(vic_Tow100)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600),
+coda::effectiveSize(yam_Tcov100$SED) / (yam_Tow100$time[nrow(yam_Tow100)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+```{r}
+summary(c((coda::effectiveSize(h1_Tcov200$SED) / (h1_Tow200$time[nrow(h1_Tow200)]) * 3600) / (coda::effectiveSize(h1_cov$SED) / (h1_ow$time[nrow(h1_ow)]) * 3600),
+coda::effectiveSize(h3_Tcov200$SED) / (h3_Tow200$time[nrow(h3_Tow200)]) * 3600 / (coda::effectiveSize(h3_cov$SED) / (h3_ow$time[nrow(h3_ow)]) * 3600),
+coda::effectiveSize(vic_Tcov200$SED) / (vic_Tow200$time[nrow(vic_Tow200)]) * 3600 / 
+  (coda::effectiveSize(vic_cov$SED) / (vic_ow$time[nrow(vic_ow)]) * 3600), 
+coda::effectiveSize(yam_Tcov200$SED) / (yam_Tow200$time[nrow(yam_Tow200)]) * 3600 / (coda::effectiveSize(yam_cov$SED) / (yam_ow$time[nrow(yam_ow)]) * 3600)))
+```
+
+```{r}
+plot(h3_Fcov50$SED, type = "l")
+plot(h3_Tcov50$SED, type = "l")
+
+plot(vic_Fcov50$SED, type = "l")
+plot(vic_Tcov50$SED, type = "l")
+
+plot(yam_Fcov50$SED, type = "l")
+plot(yam_Tcov50$SED, type = "l")
+```
+
