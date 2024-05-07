@@ -315,7 +315,7 @@ sbmds_mh <- function(dims, maxIts, D, band.no,
   sigma_chain <- rep(0, maxIts)
 
   # specify the first random value
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  chain[1, , ] <- cmds(D, dims) #mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
   sigma_chain[1] <- 1 # runif(1, min = 0.01, max = 0.99) # pick large number
 
   totalAccept <- rep(0, maxIts)
@@ -420,7 +420,7 @@ sbmds_mh_fast <- function(dims, maxIts, D, band.no,
   sigma_chain <- rep(0, maxIts)
 
   # specify the first random value
-  chain[1, , ] <- mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
+  chain[1, , ] <- cmds(D, dims) #mvtnorm::rmvnorm(n, mean = rep(0, dims), sigma = diag(dims))
   sigma_chain[1] <- 1 # runif(1, min = 0.01, max = 0.99) # pick large number
 
   totalAccept <- rep(0, maxIts)
