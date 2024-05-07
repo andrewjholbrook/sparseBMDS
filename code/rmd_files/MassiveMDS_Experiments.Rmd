@@ -1,4 +1,4 @@
-Libraries
+# load libraries
 ```{r}
 library(MassiveMDS)
 library(mvtnorm)
@@ -6,253 +6,274 @@ library(truncnorm)
 library(tidyverse)
 ```
 
-
-Source functions
+### read data from node
 ```{r}
-source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
-#source("~/sparseBMDS/code/Rscripts/sBMDS_functions.R")
+mse_LM <- read_csv("~/sparseBMDS/code/data_graphs/mse_LM.txt", 
+                     col_names = c("SD", "ITEM", "NUM", "MSE", "RELSIG", 
+                                   "AR", "ARS"), 
+                     col_types = list("d", "c", "d", "d", "d", "d", "d"))
+mse_BAND <- read_csv("~/sparseBMDS/code/data_graphs/mse_bands.txt", 
+                     col_names = c("SD", "ITEM", "NUM", "MSE", "RELSIG",
+                                   "AR", "ARS"), 
+                     col_types = list("d", "c", "d", "d", "d", "d", "d"))
+#head(mse_LM)
+
+#mse_LM %>% filter(ITEM == 10000 & SD == .4) %>% arrange(LANDMARK)
+#mse_BAND %>% filter(ITEM == 10000 & SD == .4) %>% arrange(BAND)
 ```
 
-Create data
+### mse for distances
 ```{r}
-set.seed(12345)
-Z_ex <- rmvnorm(10000, mean = rep(0, 2), sigma = diag(2))
-D_ex <- as.matrix(dist(Z_ex))
+theme_set(theme_bw())
+theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
 
-# adding noise to distance matrix
-noise <- matrix(rtruncnorm(10000^2, mean = 0, sd = .1), 10000, 10000) 
-noise <- (noise + t(noise)) / 2
-diag(noise) <- 0
-D_noise <- noise + D_ex
+pal <- c("orangered2", "darkgoldenrod1", "darkcyan") 
+#wesanderson::wes_palette(name = "Darjeeling1", n = 4, type = "discrete")
+
+LM.1 <- mse_LM %>% 
+  filter(SD == .1 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_point(size = 1.2) +
+  geom_line() + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .1))
+
+LM.2 <- mse_LM %>% 
+  filter(SD == .2 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .2))
+
+LM.3 <- mse_LM %>% 
+  filter(SD == .3 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .3))
+
+LM.4 <- mse_LM %>% 
+  filter(SD == .4 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .4))
 ```
-
-Running simulation for Metropolis with fixed sigma
 ```{r}
-set.seed(12345)
-metropolis_results <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, bandwidth = 10, 
-                                       precision = 100, targetAccept = 0.238, stepSize = .1)
-# metropolis_results <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, D = D_noise, 
-#                                        sigmasq = .01, band.no = 25, targetAccept = 0.238, stepSize = .1)
-```
-
-Sanity checks for accuracy
-```{r}
-plot(metropolis_results[ , 1, 1], type = "l")
-
-# traceplot when target function evaluated at thetas 
-# set.seed(12345)
-# # create engine
-# engine_skelly <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 1000,
-#                                    truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
-#                                    single = 0, bandwidth = 10)
-# engine_skelly <- MassiveMDS::setPairwiseData(engine_skelly, data = D_noise)
-# engine_skelly <- MassiveMDS::setPrecision(engine_skelly, precision = 100)
-# 
-# s_target_chain_mh <- c()
-# for (i in 1:100000){
-#   s_target_chain_mh[i] <- s_target_no_sigma_prior(locations = metropolis_results[i, , ], engine_skelly)
-# }
-
-# for (i in 1:100000){
-#   s_target_chain_mh[i] <- s_target_no_sigma_prior_fast(metropolis_results[i, , ], D_noise, 0.01, 25)
-# }
-
-plot(s_target_chain_mh[-(1:30000)], type = "l")
-acf(s_target_chain_mh[-(1:30000)])
-coda::effectiveSize(s_target_chain_mh[-(1:30000)])
-
-# traceplot for pairwise distances
-# s_dist_mat_mh <- array(0, dim = c(1001, 1000, 1000))
-# for (i in 99000:100000){
-#   s_dist_mat_mh[i - 98999, , ] <- as.matrix(dist(metropolis_results[i, , ]))
-# }
-
-par(mfrow=c(2,2))
-for (i in 1:5){
-  for (j in 1:5){
-    if (i != j){
-      plot(s_dist_mat_mh[1:500, i, j], type = "l")
-      abline(h = D_ex[i, j], col = "red")
-    }
-  }
-}
-```
-
-Running simulation for HMC with fixed sigma
-```{r}
-set.seed(12345)
-hmc_results <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, precision = 100,
-                                        bandwidth = 10, targetAccept = 0.65, stepSize = .1, 
-                                        thin = 1)
-```
-
-
-```{r}
-plot(hmc_results[-100001, 1, 1], type = "l")
-
-# traceplot when target function evaluated at thetas 
-
-# engine_plain <- MassiveMDS::createEngine(embeddingDimension = 2, locationCount = 10000,
-#                                    truncation = TRUE, tbb = 0, simd = 0, gpu = 0,
-#                                    single = 0, bandwidth = 10)
-# engine_plain <- MassiveMDS::setPairwiseData(engine_plain, data = D_noise)
-# engine_plain <- MassiveMDS::setPrecision(engine_plain, precision = 100)
-# 
-# s_target_chain_hmc <- c()
-# for (i in 1:dim(hmc_results)[1]){
-#   s_target_chain_hmc[i] <- s_target_no_sigma_prior(locations = hmc_results[i, , ], engine_plain)
-# }
-
-plot(s_target_chain_hmc[-c(1:18000, 100001)], type = "l")
-acf(s_target_chain_hmc[-c(1:18000, 100001)])
-coda::effectiveSize(s_target_chain_hmc[-c(1:18000, 100001)])
-
-# traceplot for pairwise distances
-# s_dist_mat_hmc <- array(0, dim = c(20, 10000, 10000))#c(dim(hmc_results)[1], 10000, 10000))
-# j = 0
-# for (i in 1:100000){
-#   if (i %% 5000 == 0){
-#     j = j + 1
-#     s_dist_mat_hmc[j, , ] <- as.matrix(dist(hmc_results[i, , ]))
-#   }
-# }
-
-par(mfrow=c(2,2))
-for (i in 1:5){
-  for (j in 1:5){
-    if (i != j){
-      plot(s_dist_mat_hmc[, i, j], type = "l")
-      abline(h = D_ex[i, j], col = "red")
-    }
-  }
-}
-```
-
-Capturing MSE as a function of band # with fixed sigma = 0.1 & cmds as initial position 
-
-```{r}
-set.seed(12345)
-#samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)
-#mse_band_hmc <- matrix(NA, nrow = max(samp), ncol = length(samp))
-mse_band_hmc_10000 <- c()
-burnin <- 200
-
-#for (r in 1:length(samp)){
-  n <- 10000#samp[r]
-  Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, 2), sigma = diag(2)) # dims = 2, n = 25
-  D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-  noise <- matrix(rtruncnorm(n^2, mean = 0, sd = .1), n, n) 
-  noise <- (noise + t(noise)) / 2
-  diag(noise) <- 0
-  D.noise <- noise + D.sim
-  for (s in 12:20){
-    # sim <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, band.no = s, targetAccept = 0.238,
-    #                              sigmasq = .01, D = D.noise, stepSize = 1)
-    sim <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D.noise, 
-                                    precision = 100, bandwidth = s, 
-                                    targetAccept = 0.65, stepSize = .1, thin = 100)
-    error <- c()
-    for (t in 1:1001){
-      subset <- sample(1000)
-      error[t] <- mean((as.matrix(dist(sim[t, subset, ])) - as.matrix(dist(Z.sim[subset, ])))^2)
-    }
-    mse_band_hmc_10000[s] <- mean(error[-(1:burnin)])
-  }
-#}
-```
-
-```{r}
-par(mfrow=c(2,2))
-plot(mse_band_hmc[1:10, 1], main = "N = 10, BAND = 10, SD = .2")
-plot(mse_band_hmc[1:10, 2], main = "N = 100, BAND = 10, SD = .2")
-plot(mse_band_hmc[1:15, 3], main = "N = 1000, BAND = 10, SD = .2")
-
-plot(mse_band_hmc_10000)
-```
-
-```{r}
-set.seed(12345)
-samp <- c(10, 100, 1000) #c(10, 15, 20, 25, 30)
-mse_band_mh <- matrix(NA, nrow = max(samp), ncol = length(samp))
-
-for (r in 1:length(samp)){
-  n <- samp[r]
-  Z.sim <- mvtnorm::rmvnorm(n, mean = rep(0, 2), sigma = diag(2)) # dims = 2, n = 25
-  D.sim <- as.matrix(dist(Z.sim, diag = TRUE, upper = TRUE)) # n x n matrix of distances
-  noise <- matrix(rtruncnorm(n^2, mean = 0, sd = .1), n, n) 
-  noise <- (noise + t(noise)) / 2
-  diag(noise) <- 0
-  D.noise <- noise + D.sim
-  for (s in 1:10){
-    # sim <- sbmds_metropolis_fast(dims = 2, maxIts = 100000, band.no = s, targetAccept = 0.238,
-    #                              sigmasq = .01, D = D.noise, stepSize = 1)
-    sim <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D.noise, 
-                                    precision = 100, bandwidth = s, 
-                                    targetAccept = 0.238, stepSize = .1)
-    error <- c()
-    for (t in 1:100000){
-      error[t] <- mean((as.matrix(dist(sim[t, , ], diag = TRUE, upper = TRUE)) - D.sim)^2)
-    }
-    mse_band_mh[s, r] <- mean(error)
-  }
-}
-```
-
-```{r}
-plot(mse_band_mh[1:10 , 1]) # 10 items
-plot(mse_band_mh[1:10 , 2]) # 100 items
-plot(mse_band_mh[1:10 , 3]) # 1000 items
-```
-
-### data from Hoffman
-
-```{r}
-mse_data <- read_csv("~/sparseBMDS/code/txt_simdata/mse_results.txt", 
-                     col_names = c("SD", "ITEM", "BAND", "MSE"), 
-                     col_types = list("d", "c", "d", "d"))
-head(mse_data)
+LM_all <- ggpubr::ggarrange(LM.1, LM.2, LM.3, LM.4, nrow = 2, ncol = 2, 
+                            common.legend = TRUE, legend = "right")
+LM_all <- ggpubr::annotate_figure(LM_all, 
+                                  #top = "sBMDS accuracy as a function of landmarks & noise", 
+                                  left = "Mean of MSE across distances", 
+                                  bottom = "Number of landmarks")
+#LM_all
+ggsave("mse_LM.png", plot = LM_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
 ```
 
 ```{r}
 theme_set(theme_bw())
 theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
 
-pal <- c("orchid1", "slateblue1", "orange", "springgreen3") 
-#wesanderson::wes_palette(name = "Darjeeling1", n = 4, type = "discrete")
+BAND.1 <- mse_BAND %>% 
+  filter(SD == .1 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .1))
 
-q1 <- mse_data %>% 
+BAND.2 <- mse_BAND %>% 
+  filter(SD == .2 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .2))
+
+BAND.3 <- mse_BAND %>% 
+  filter(SD == .3 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .3))
+
+BAND.4 <- mse_BAND %>% 
+  filter(SD == .4 & ITEM < 10000) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = ITEM)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Number of \n data points") +
+  labs(title = expression(sigma^{("true")} == .4))
+```
+```{r}
+BAND_all <- ggpubr::ggarrange(BAND.1, BAND.2, BAND.3, BAND.4, nrow = 2, 
+                              ncol = 2, common.legend = TRUE, legend = "right")
+BAND_all <- ggpubr::annotate_figure(BAND_all, 
+                                    #top = "sBMDS accuracy as a function of bands & noise", 
+                                    left = "Mean of MSE across distances", 
+                                    bottom = "Number of bands")
+#BAND_all
+ggsave("mse_BAND.png", plot = BAND_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
+```
+### mse on distances for n = 10,000
+```{r}
+theme_set(theme_bw())
+theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
+pal <- c("darkred", "navyblue")
+
+MSE.1 <- mse_BAND %>% filter(ITEM == 10000 & SD == .1) %>% 
+  mutate(METHOD = "BAND") %>% 
+  bind_rows(., mse_LM %>% filter(ITEM == 10000 & SD == .1) %>% 
+              mutate(METHOD = "LANDMARK")) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Method", 
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma^{("true")} == .1))
+
+MSE.2 <- mse_BAND %>% filter(ITEM == 10000 & SD == .2) %>% 
+  mutate(METHOD = "BAND") %>% 
+  bind_rows(., mse_LM %>% filter(ITEM == 10000 & SD == .2) %>% 
+              mutate(METHOD = "LANDMARK")) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Method",
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma^{("true")} == .2))
+
+MSE.3 <- mse_BAND %>% filter(ITEM == 10000 & SD == .3) %>% 
+  mutate(METHOD = "BAND") %>% 
+  bind_rows(., mse_LM %>% filter(ITEM == 10000 & SD == .3) %>% 
+              mutate(METHOD = "LANDMARK")) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Method",
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma^{("true")} == .3))
+
+MSE.4 <- mse_BAND %>% filter(ITEM == 10000 & SD == .4) %>% 
+  mutate(METHOD = "BAND") %>% 
+  bind_rows(., mse_LM %>% filter(ITEM == 10000 & SD == .4) %>% 
+              mutate(METHOD = "LANDMARK")) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_line() + 
+  geom_point(size = 1.2) + 
+  scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
+  scale_color_manual(values = pal, name = "Method",
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma^{("true")} == .4))
+```
+```{r}
+MSE_all <- ggpubr::ggarrange(MSE.1, MSE.2, MSE.3, MSE.4, nrow = 2, 
+                              ncol = 2, common.legend = TRUE, legend = "right")
+MSE_all <- ggpubr::annotate_figure(MSE_all, 
+                                   #top = "10000 data points",
+                                   bottom = "Number of bands (landmarks)",
+                                   left = "Mean of MSE across distances")
+#MSE for n = 10,000
+ggsave("mse_n10000.png", plot = MSE_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
+```
+
+
+### median sigma 
+```{r}
+pal <- c("orangered2", "darkgoldenrod1", "darkcyan", "navyblue") 
+sLM.1 <- mse_LM %>% 
   filter(SD == .1) %>% 
-  ggplot(aes(x = BAND, y = MSE, color = ITEM)) + 
+  ggplot(aes(x = LANDMARK, y = RELSIG, color = ITEM)) + 
   geom_point(size = 1.2) + 
   scale_color_manual(values = pal) +
   labs(title = "SD = .1")
 
-q2 <- mse_data %>% 
+sLM.2 <- mse_LM %>% 
   filter(SD == .2) %>% 
-  ggplot(aes(x = BAND, y = MSE, color = ITEM)) + 
+  ggplot(aes(x = LANDMARK, y = RELSIG, color = ITEM)) + 
   geom_point(size = 1.2) + 
   scale_color_manual(values = pal) +
   labs(title = "SD = .2")
 
-q3 <- mse_data %>% 
+sLM.3 <- mse_LM %>% 
   filter(SD == .3) %>% 
-  ggplot(aes(x = BAND, y = MSE, color = ITEM)) + 
+  ggplot(aes(x = LANDMARK, y = RELSIG, color = ITEM)) + 
   geom_point(size = 1.2) + 
   scale_color_manual(values = pal) +
   labs(title = "SD = .3")
 
-q4 <- mse_data %>% 
+sLM.4 <- mse_LM %>% 
   filter(SD == .4) %>% 
-  ggplot(aes(x = BAND, y = MSE, color = ITEM)) + 
+  ggplot(aes(x = LANDMARK, y = RELSIG, color = ITEM)) + 
   geom_point(size = 1.2) + 
   scale_color_manual(values = pal) +
   labs(title = "SD = .4")
 ```
 ```{r}
-q_all <- ggpubr::ggarrange(q1, q2, q3, q4, nrow = 2, ncol = 2, common.legend = TRUE, legend = "right")
-q_all <- ggpubr::annotate_figure(q_all, top = "sBMDS Accuracy as a Function of Bands & Noise", 
-                left = "Mean Squared Error (MSE)", 
-                bottom = "Number of Bands")
-ggsave("sBMDS_mse_graphs.png", plot = q_all, path = "~/sparseBMDS/code/results_graphs", 
-       bg = "white")
+sLM_all <- ggpubr::ggarrange(sLM.1, sLM.2, sLM.3, sLM.4, 
+                             nrow = 2, ncol = 2, common.legend = TRUE, 
+                             legend = "right")
+sLM_all <- ggpubr::annotate_figure(sLM_all,
+                                   #top = "sBMDS Accuracy as a Function of Bands & Noise", 
+                                   left = "Median sigma",
+                                   bottom = "Number of landmarks")
+sLM_all
+```
+
+```{r}
+sBAND.1 <- mse_BAND %>% 
+  filter(SD == .1) %>% 
+  ggplot(aes(x = BAND, y = RELSIG, color = ITEM)) + 
+  geom_point(size = 1.2) + 
+  scale_color_manual(values = pal) +
+  labs(title = "SD = .1")
+
+sBAND.2 <- mse_BAND %>% 
+  filter(SD == .2) %>% 
+  ggplot(aes(x = BAND, y = RELSIG, color = ITEM)) + 
+  geom_point(size = 1.2) + 
+  scale_color_manual(values = pal) +
+  labs(title = "SD = .2")
+
+sBAND.3 <- mse_BAND %>% 
+  filter(SD == .3) %>% 
+  ggplot(aes(x = BAND, y = RELSIG, color = ITEM)) + 
+  geom_point(size = 1.2) + 
+  scale_color_manual(values = pal) +
+  labs(title = "SD = .3")
+
+sBAND.4 <- mse_BAND %>% 
+  filter(SD == .4) %>% 
+  ggplot(aes(x = BAND, y = RELSIG, color = ITEM)) + 
+  geom_point(size = 1.2) + 
+  scale_color_manual(values = pal) +
+  labs(title = "SD = .4")
+```
+```{r}
+sBAND_all <- ggpubr::ggarrange(sBAND.1, sBAND.2, sBAND.3, sBAND.4, 
+                               nrow = 2, ncol = 2, common.legend = TRUE, 
+                               legend = "right")
+sBAND_all <- ggpubr::annotate_figure(sBAND_all, 
+                                     top = "sBMDS Accuracy as a Function of Bands & Noise", 
+                                     left = "Median sigma",
+                                     bottom = "Number of bands")
+sBAND_all
 ```

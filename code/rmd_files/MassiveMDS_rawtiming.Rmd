@@ -1,0 +1,135 @@
+## Import libraries
+```{r}
+library(MassiveMDS)
+library(mvtnorm)
+library(tidyverse)
+library(quantreg)
+```
+
+## Log-likelihood & gradient comparison for n = 10000
+```{r}
+llgradB.df <- read_csv("~/sparseBMDS/code/data_graphs/rawllgrad_n10000B.txt",
+                    col_names = c("N", "band.no", "likelihoodB", "gradientB")) 
+llgradLM.df <- read_csv("~/sparseBMDS/code/data_graphs/rawllgrad_n10000LM.txt",
+                    col_names = c("N", "band.no", "likelihoodLM", "gradientLM"))
+```
+
+```{r}
+theme_set(theme_bw())
+# theme_update(plot.title = element_text(hjust = 0.5, size = 10),
+#              axis.text.x = element_text(size = 7),
+#              axis.text.y = element_text(size = 7),
+#              axis.title.x = element_text(size = 9),
+#              legend.title = element_text(size = 9))
+
+llgrad.both <- llgradB.df %>% 
+  inner_join(llgradLM.df, by = c("N", "band.no")) %>% 
+  gather(., key = "raw type", value = "elapsed time", 
+         c(likelihoodB, gradientB, likelihoodLM, gradientLM)) %>% 
+  ggplot(., aes(band.no, `elapsed time`, color = `raw type`, linetype = `raw type`)) + 
+  #geom_point() + 
+  geom_smooth(se = FALSE) + 
+  labs(title = NULL, x = "Number of bands (landmarks)", 
+       y = "Seconds per evaluation") +
+  scale_color_manual(values = c("orangered2", "orangered2", "darkcyan", "darkcyan"), 
+                     labels = c("B-sBMDS gradient", "L-sBMDS gradient", 
+                                "B-sBMDS likelihood", "L-sBMDS likelihood"), 
+                     name = "Evaluation") +
+  scale_linetype_manual(values = c("gradientB" = 1, "gradientLM" = 2, 
+                                   "likelihoodB" = 1, "likelihoodLM" = 2),
+                        labels = c("B-sBMDS gradient", "L-sBMDS gradient", 
+                                "B-sBMDS likelihood", "L-sBMDS likelihood"),
+                        name = "Evaluation")
+
+llgrad.both
+```
+```{r}
+ggsave("rawllgradn10000.png", plot = llgrad.both, width = 7, height = 3,
+       path = "~/sparseBMDS/code/results_graphs",
+       bg = "white")
+```
+
+## Log-likelihood & gradient speed-ups as a function of items, bands, and time
+```{r}
+# ibt_data <- read_csv("~/sparseBMDS/code/txt_simdata/MassiveMDS_rawllgrad.txt",
+#                      col_names = c("item", "band", "ll_time", "grad_time"))
+ibt_data <- read_csv("~/sparseBMDS/code/data_graphs/band_speedup.txt",
+                     col_names = c("item", "band", "ll_time", "grad_time"))
+ilmt_data <- read_csv("~/sparseBMDS/code/data_graphs/LM_speedup.txt",
+                     col_names = c("item", "band", "ll_time", "grad_time"))
+pal <- c("orangered2", "darkgoldenrod1", "lightgoldenrod", 
+         "darkcyan", "navyblue")
+```
+
+BANDS--
+```{r}
+## rq : quantile regression default is tau = .5 which is median regression
+## quantreg::rq()
+
+ibt_l <-  ibt_data %>% filter(item <= 20000) %>% 
+  ggplot(aes(x = item, y = ll_time, color = factor(band))) +
+  #geom_point() + 
+  #geom_smooth(se = FALSE)
+  geom_smooth(formula = y ~ x, se = FALSE, method = "rq") + 
+  labs(x = NULL, y = NULL, title = "Log-likelihood") +
+  theme(legend.key.width = unit(1.5, "cm")) + 
+  scale_color_manual(name = "Bands", breaks = seq(50, 10, by = -10), 
+                     values = pal)
+
+ibt_g <- ibt_data %>% filter(item <= 20000) %>% 
+  ggplot(aes(x = item, y = grad_time, color = factor(band))) +
+  #geom_point() +
+  #geom_smooth(se = FALSE)
+  geom_smooth(formula = y ~ x, se = FALSE, method = "rq") + 
+  labs(x = NULL, y = NULL, title = "Gradient") +
+  theme(legend.key.width = unit(1.5, "cm")) + 
+  scale_color_manual(name = "Bands", breaks = seq(50, 10, by = -10), 
+                     values = pal)
+
+ibt_both <- ggpubr::ggarrange(ibt_l, ibt_g, nrow = 1, ncol = 2, 
+                      common.legend = TRUE, legend = "right")
+```
+```{r}
+ibt_both <- ggpubr::annotate_figure(ibt_both,
+                            bottom = "Number of data points",
+                            left = "Seconds per evaluation")
+
+ggsave("sBMDS.rawtime.band.png", plot = ibt_both, width = 7, height = 3,
+       path = "~/sparseBMDS/code/results_graphs",
+       bg = "white")
+```
+
+LANDMARKS--
+```{r}
+ilmt_l <-  ilmt_data %>% filter(item <= 20000) %>% 
+  ggplot(aes(x = item, y = ll_time, color = factor(band))) +
+  #geom_point() + 
+  #geom_smooth(se = FALSE)
+  geom_smooth(formula = y ~ x, se = FALSE, method = "rq") + 
+  labs(x = NULL, y = NULL, title = "Log-likelihood") +
+  theme(legend.key.width = unit(1.5, "cm")) + 
+  scale_color_manual(name = "Landmarks", breaks = seq(50, 10, by = -10), 
+                     values = pal)
+
+ilmt_g <- ilmt_data %>% filter(item <= 20000) %>% 
+  ggplot(aes(x = item, y = grad_time, color = factor(band))) +
+  #geom_point() +
+  #geom_smooth(se = FALSE)
+  geom_smooth(formula = y ~ x, se = FALSE, method = "rq") + 
+  labs(x = NULL, y = NULL, title = "Gradient") +
+  theme(legend.key.width = unit(1.5, "cm")) + 
+  scale_color_manual(name = "Landmarks", breaks = seq(50, 10, by = -10), 
+                     values = pal)
+
+ilmt_both <- ggpubr::ggarrange(ilmt_l, ilmt_g, nrow = 1, ncol = 2, 
+                      common.legend = TRUE, legend = "right")
+```
+```{r}
+ilmt_both <- ggpubr::annotate_figure(ilmt_both,
+                            bottom = "Number of data points",
+                            left = "Seconds per evaluation")
+
+ggsave("sBMDS.rawtime.lm.png", plot = ilmt_both, width = 7, height = 3,
+       path = "~/sparseBMDS/code/results_graphs",
+       bg = "white")
+```

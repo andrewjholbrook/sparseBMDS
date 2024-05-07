@@ -14,134 +14,106 @@ Import libraries
 library(MassiveMDS)
 library(mvtnorm)
 library(truncnorm)
+library(plyr)
 library(tidyverse)
+library(ggpubr)
 ```
-
-Source functions
-```{r}
-source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
-```
-
-Simulate data
-```{r}
-set.seed(12345)
-Z_ex <- rmvnorm(100, mean = rep(0, 2), sigma = diag(2))
-D_ex <- as.matrix(dist(Z_ex))
-
-# adding noise to distance matrix
-noise <- matrix(rtruncnorm(100^2, mean = 0, sd = .1), 100, 100) 
-noise <- (noise + t(noise)) / 2
-diag(noise) <- 0
-D_noise <- noise + D_ex
-```
-
-
-Method 1: Full likelihood Metropolis-Hastings (FMH)
-```{r}
-set.seed(12345)
-# time
-start_fmh <- proc.time()
-full_fmh <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, 
-                            bandwidth = 100, precision = 100, 
-                            targetAccept = 0.238, stepSize = .1, thin = 1)
-end_fmh <- proc.time() - start_fmh
-
-# effective sample size 
-## calculate a distance matrix
-dist_mat_fmh <- array(0, dim = c(100000, 100, 100))
-
-for (j in 1:100000){
-  dist_mat_fmh[j, , ] <- as.matrix(dist(full_fmh[j, , ]))
-  #dist_mat_fmh[j - 1, , ] <- as.matrix(dist(full_fmh[j, , ]))
-}
-
-miness_fmh <- 100000
-for (k in 1:100){
-  ess <- min(coda::effectiveSize(dist_mat_fmh[-(1:20000), -k, k]))
-  if (ess < miness_fmh){
-    miness_fmh <- ess
-  }
-}
-
-# efficiency 
-
-miness_fmh / end_fmh[3] # effective sample size per second
-```
-
-Method 2: Full likelihood Hamiltonian Monte Carlo (FHMC)
-```{r}
-set.seed(12345)
-# time
-start_fhmc <- proc.time()
-full_fhmc <- sbmds_nonadapt_sigma_hmc(maxIts = 100000, dims = 2, data = D_noise, 
-                                      bandwidth = 100, precision = 100, 
-                                      targetAccept = 0.65, stepSize = .1, thin = 100)
-end_fhmc <- proc.time() - start_fhmc
-
-# effective sample size 
-## calculate a distance matrix
-dist_mat_fhmc <- array(0, dim = c(1000, 100, 100))
-
-for (j in 2:1001){
-  dist_mat_fhmc[j - 1, , ] <- as.matrix(dist(full_fhmc[j, , ]))
-}
-
-miness_fhmc <- 100000
-for (k in 1:100){
-  ess <- min(coda::effectiveSize(dist_mat_fhmc[-(1:200), -k, k]))
-  if (ess < miness_fhmc){
-    miness_fhmc <- ess
-  }
-}
-
-# efficiency 
-
-miness_fhmc / end_fhmc[3] # effective sample size per second
-```
-
-Method 3: Sparse likelihood MH
+## Results from node - graph & tables, all miness > 100
 
 ```{r}
-set.seed(12345)
-# time
-start_smh <- proc.time()
-full_smh <- sbmds_metropolis(maxIts = 100000, dims = 2, data = D_noise, 
-                            bandwidth = 10, precision = 100, 
-                            targetAccept = 0.238, stepSize = .1, thin = 1)
-end_smh <- proc.time() - start_smh
+comptime_data <- read_csv("~/sparseBMDS/code/data_graphs/ess_time.txt",
+                          col_names = c("item", "method", "LM", "time", 
+                                        "miness", "medess"))
+View(comptime_data)
+```
+```{r}
+pal <- c("darkred", "orangered2", "darkgoldenrod1", "lightgoldenrod", 
+         "darkcyan", "navyblue")
 
-# effective sample size 
-## calculate a distance matrix
-dist_mat_smh <- array(0, dim = c(100000, 100, 100))
-
-for (j in 1:100000){
-  dist_mat_smh[j, , ] <- as.matrix(dist(full_smh[j, , ]))
-  #dist_mat_fmh[j - 1, , ] <- as.matrix(dist(full_fmh[j, , ]))
-}
-
-miness_smh <- 100000
-for (k in 1:100){
-  ess <- min(coda::effectiveSize(dist_mat_smh[-(1:20000), -k, k]))
-  if (ess < miness_smh){
-    miness_smh <- ess
-  }
-}
-
-# efficiency 
-
-miness_smh / end_smh[3] # effective sample size per second
+ct_min <- comptime_data %>%
+  mutate(type = paste(method, LM)) %>% 
+  filter(type %in% c("FHMC FALSE", "FMH FALSE", "SMH FALSE", "SMH TRUE", 
+                     "SSHMC FALSE", "SSHMC TRUE")) %>% 
+  ggplot(aes(x = factor(item), y = log(miness / time * 3600), fill = type)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.position = "right") + 
+  labs(#title = "Computational Performance", 
+       y = "Log minimum ESS per hour", x = "Number of data points") +
+  scale_fill_manual(values = pal, name = "Method",
+                    labels = c("Full/HMC", "Full/MH", "B-sBMDS/MH", "L-sBMDS/MH", 
+                               "B-sBMDS/HMC", "L-sBMDS/HMC")) + 
+  theme_bw()
+```
+```{r}
+ggsave("compperf.miness.png", ct_min, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
 ```
 
-
-Method 4: Sparse likelihood but full gradient HMC
-
 ```{r}
+theme_set(theme_bw())
+# pal <- c("FHMC" = "orangered2", "FMH" = "darkgoldenrod1", 
+#          "SMH" = "darkcyan", "SSHMC" = "navyblue")
 
+pal <- c("darkred", "orangered2", "darkgoldenrod1", "lightgoldenrod", 
+         "darkcyan", "navyblue")
+
+ct1 <- comptime_data %>% #filter(LM == FALSE) %>% 
+  ggplot(aes(x = factor(item), y = log(miness / time * 3600), fill = method)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.position = "right") + 
+  labs(title = "Bands", y = NULL, x = NULL) + 
+  scale_fill_manual(values = pal, name = "Method", 
+                    labels = c("F/HMC", "F/MH", "S/MH", "S/HMC"))
+
+ct2 <- comptime_data %>% filter(LM == TRUE) %>% 
+  ggplot(aes(x = factor(item), y = log(miness / time * 3600), fill = method)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.position = "right") + 
+  labs(title = "Landmarks", y = NULL, x = NULL) + 
+  scale_fill_manual(values = pal, name = "Method")
+
+ct_min <- ggarrange(ct1, ct2, nrow = 1, ncol = 2, common.legend = TRUE, 
+                     legend = "right")
+ct_min <- annotate_figure(ct_min, 
+                           left = "Log minimum ESS per hour",
+                           #top = "Computational Performance", 
+                           bottom = "Number of data points")
+ct_min
+```
+```{r}
+ggsave("compperf.miness.png", ct_min, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
 ```
 
-Method 5: Sparse likeihood & sparse gradient HMC 
-
 ```{r}
+theme_set(theme_bw())
+pal <- c("orangered2", "darkgoldenrod1", "darkcyan", "navyblue")
 
+ct3 <- comptime_data %>% filter(LM == FALSE) %>% 
+  ggplot(aes(x = factor(item), y = log(medess / time * 3600), fill = method)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.position = "right") + 
+  labs(title = "Bands", y = NULL, x = NULL) + 
+  scale_fill_manual(values = pal, name = "Method",
+                    labels = c("F/HMC", "F/MH", "S/MH", "S/HMC"))
+
+ct4 <- comptime_data %>% filter(LM == TRUE) %>% 
+  ggplot(aes(x = factor(item), y = log(medess / time * 3600), fill = method)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.position = "right") + 
+  labs(title = "Landmarks", y = NULL, x = NULL) + 
+  scale_fill_manual(values = pal, name = "Method")
+
+ct_med <- ggarrange(ct3, ct4, nrow = 1, ncol = 2, common.legend = TRUE, 
+                     legend = "right")
+ct_med <- annotate_figure(ct_med, 
+                          left = "Log median ESS per second", 
+                          #top = "Computational Performance", 
+                          bottom = "Number of data points")
+ct_med
+```
+```{r}
+ggsave("compperf.medess.png", ct_med, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
 ```
 

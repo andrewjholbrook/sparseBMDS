@@ -1,0 +1,588 @@
+
+# import libraries
+```{r}
+library(mvtnorm)
+library(truncnorm)
+library(MassiveMDS)
+library(ggpubr)
+library(tidyverse)
+```
+
+# source function
+```{r}
+source("~/sparseBMDS/code/Rscripts/sBMDS_MassiveMDS_functions.R")
+```
+
+# function for assigning color
+```{r}
+color_grid <- function(x){
+  if (x < -2){
+    clr <- "red"
+  } else if (x < -1 & x >= -2){
+    clr <- "orange"
+  } else if (x < 0 & x >= -1){
+    clr <- "yellow"
+  } else if (x < 1 & x >= 0){
+    clr <- "green"
+  } else if (x < 2 & x >= 1){
+    clr <- "blue"
+  } else {
+    clr <- "purple"
+  }
+  return(clr)
+}
+```
+
+# function for additive error on distance matrix 
+
+```{r}
+sim_adderror <- function(data, sd, size, dims, band.no, t.f){
+  data_sim <- array(0, dim = c(length(sd), size, dims))
+  for (i in 1:length(sd)){
+    # adding noise to distance matrix
+    noise <- matrix(0, nrow = size, ncol = size)
+    noise[upper.tri(noise)] <- rtruncnorm(size * (size - 1) / 2, mean = 0, 
+                                          sd = sd[i], a = 0)
+    noise <- noise + t(noise)
+    D.noise <- noise + data
+    # run simulation
+    sim <- bmds_nonadapt_sigma_hmc(maxIts = 110000, dims = dims, data = D.noise,
+                                   bandwidth = band.no, precision = (1 / sd[i]^2), 
+                                   landmarks = t.f, targetAccept = 0.65, 
+                                   stepSize = 0.005, thin = 100, burnin = 10000)
+    # average across iterations
+    data_sim[i, , ] <- colMeans(sim$latent[, , ])
+    
+    # check ess aka proper convergence
+    # dist_sim <- array(0, dim = c(10, size, size))
+    # for (j in 1:10){
+    #   dist_sim[j, , ] <- as.matrix(dist(sim$latent[j, , ]))
+    # }
+    # 
+    # miness <- 10000
+    # for (k in 1:size){
+    #   for (l in (k + 1):size){
+    #     ess <- min(coda::effectiveSize(dist_sim[, k, l]))
+    #     if (ess < miness){
+    #       miness <- ess
+    #     }
+    #   }
+    # }
+  }
+  return(list(loc = data_sim))
+}
+```
+
+# simulate data
+```{r}
+set.seed(12345)
+latent <- rmvnorm(1000, mean = rep(0, 2), sigma = diag(2))
+latent_tib <- tibble(x = latent[ , 1], y = latent[, 2]) %>%
+  mutate(., color = sapply(x, color_grid))
+
+D_latent <- as.matrix(dist(latent))
+
+# plot of original data
+# pal <- c("red" = "steelblue1", "orange" = "springgreen3", "yellow" = "yellow", 
+#          "green" = "orange", "blue" ="orchid1" , "purple" = "blue")
+
+pal <- c("red" = "darkred", "orange" = "orangered2", "yellow" = "darkgoldenrod1", 
+         "green" = "lightgoldenrod", "blue" ="darkcyan" , "purple" = "navyblue")
+latent_tib %>%
+  ggplot(aes(x, y)) +
+  geom_point(aes(color = color)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient()
+```
+# simulate results i.e. n = 1000, sd = 0.1, 0.2, 0.3, 0.3, across bands 5, 10, 15, 20
+
+```{r}
+set.seed(12345)
+band5 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 5, t.f = FALSE)
+
+band10 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 10, t.f = FALSE)
+
+band15 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 15, t.f = FALSE)
+
+band20 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 20, t.f = FALSE)
+```
+
+```{r}
+set.seed(12345)
+lm5 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 5, t.f = TRUE)
+
+lm10 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 10, t.f = TRUE)
+
+lm15 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 15, t.f = TRUE)
+
+lm20 <- sim_adderror(data = D_latent, sd = c(0.1, 0.2, 0.3, 0.4), size = 1000, 
+                      dims = 2, band.no = 20, t.f = TRUE)
+```
+
+# plot simulated results
+```{r}
+gauss.error <- read_csv("~/sparseBMDS/code/data_graphs/error_gaussianB.txt", 
+                        col_names = c("sd", "band", "miness", "X", "Y"))
+```
+```{r}
+theme_set(theme_bw())
+theme_update(plot.title = element_text(hjust = 0.5, size = rel(1)),
+             legend.position = "none",
+             #aspect.ratio = 1,
+             axis.text.x = element_text(size = 7),
+             axis.text.y = element_text(size = 7))
+             #plot.margin = unit(c(-0.75, 0, -.8, 0, "mm")))
+
+# 5 bands
+g1.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .1 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "5 bands", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+  
+
+g2.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .2 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g3.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .3 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g4.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .4 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+# 10 bands # rotation to original matrix
+g1.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .1 & band == 10) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "10 bands", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g2.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .2 & band == 10) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g3.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .3 & band == 10) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g4.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .4 & band == 10) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") +
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+# 15 bands
+g1.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .1 & band == 15) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "15 bands", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g2.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .2 & band == 15) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g3.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .3 & band == 15) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g4.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .4 & band == 15) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) + 
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+# 20 bands
+
+g1.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .1 & band == 20) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(title = expression(sigma^{("true")} == .1), y = "20 bands", x = NULL) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g2.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .2 & band == 20) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(title = expression(sigma^{("true")} == .2), y = "", x = NULL) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g3.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .3 & band == 20) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(title = expression(sigma^{("true")} == .3), y = "", x = NULL) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+g4.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .4 & band == 20) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(title = expression(sigma^{("true")} == .4), y = "", x = NULL) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+scale_color_gradient(low = "blue", high = "orange")
+
+g_all <- ggpubr::ggarrange(g1.20, g2.20, g3.20, g4.20, 
+                           g1.15, g2.15, g3.15, g4.15,
+                           g1.10, g2.10, g3.10, g4.10, 
+                           g1.5, g2.5, g3.5, g4.5, 
+                           nrow = 4, ncol = 4, legend = "none")
+
+# ggsave("gaussian.errorgrid.BAND.png", g_all, path = "~/sparseBMDS/code/results_graphs",
+#        bg = "white", width = 10, height = 8)
+g_all
+```
+```{r}
+ggsave("gaussian.error.BAND.png", g_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 10, height = 8)
+```
+
+```{r}
+gauss.error <- read_csv("~/sparseBMDS/code/data_graphs/error_gaussianLM.txt", 
+                        col_names = c("sd", "band", "miness", "X", "Y"))
+```
+```{r}
+theme_set(theme_bw())
+theme_update(plot.title = element_text(hjust = 0.5, size = rel(1)),
+             legend.position = "none",
+             #aspect.ratio = 1,
+             axis.text.x = element_text(size = 7),
+             axis.text.y = element_text(size = 7))
+             #plot.margin = unit(c(-0.75, 0, -.8, 0, "mm")))
+
+### 5 LANDMARKS
+p1.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .1 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "5 landmarks", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p2.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .2 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p3.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .3 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>% 
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p4.5 <- as_tibble(vegan::procrustes(latent, gauss.error %>% 
+                                      filter(sd == .4 & band == 5) %>% 
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>% 
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") + 
+  xlim(c(-4, 4)) + 
+  ylim(c(-4, 4)) + 
+  scale_color_manual(values = pal)
+
+### 10 LANDMARKS
+p1.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .1 & band == 10) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "10 landmarks", title = expression(sigma^{("true")} == .1)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p2.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .2 & band == 10) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .2)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p3.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .3 & band == 10) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .3)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p4.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .4 & band == 10) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .4)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+
+### 15 LANDMARKS
+p1.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .1 & band == 15) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "15 landmarks", title = "") +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p2.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .2 & band == 15) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p3.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .3 & band == 15) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p4.15 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .4 & band == 15) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = "") +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+
+### 20 LANDMARKS
+p1.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .1 & band == 20) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "20 landmarks", title = expression(sigma^{("true")} == .1)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p2.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .2 & band == 20) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .2)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p3.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .3 & band == 20) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .3)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+  #scale_color_gradient(low = "blue", high = "orange")
+
+p4.20 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
+                                      filter(sd == .4 & band == 20) %>%
+                                      select(X, Y))$Yrot) %>%
+  mutate(., color = latent_tib$color) %>%
+  ggplot(aes(V1, V2)) +
+  geom_point(aes(color = color)) +
+  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .4)) +
+  xlim(c(-4, 4)) +
+  ylim(c(-4, 4)) +
+  scale_color_manual(values = pal)
+```
+```{r}
+p_all <- ggpubr::ggarrange(p1.20, p2.20, p3.20, p4.20, 
+                           p1.15, p2.15, p3.15, p4.15, 
+                           p1.10, p2.10, p3.10, p4.10, 
+                           p1.5, p2.5, p3.5, p4.5, 
+                           nrow = 4, ncol = 4, legend = "none")
+p_all
+```
+
+```{r}
+ggsave("gaussian.error.LM.png", p_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 10, height = 8)
+```
+
+```{r}
+both_all <- ggpubr::ggarrange(p1.10, p2.10, p3.10, p4.10, 
+                              g1.10, g2.10, g3.10, g4.10,
+                              p1.5, p2.5, p3.5, p4.5, 
+                              g1.5, g2.5, g3.5, g4.5, 
+                              nrow = 4, ncol = 4, legend = "none")
+both_all
+```
+
+```{r}
+ggsave("gaussian.error.png", both_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 10, height = 8)
+```
+
