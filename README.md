@@ -8,7 +8,7 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 `MassiveMDS_rawllgrad.R`/ `llgrad_speedups.R`: output the computational time to evaluate the raw log-likelihood and gradient from the `MassiveMDS` package.
 
-`MassiveMDS_mse.R`: calculate MSE and relative error for latent variables and sigma respectively
+`MassiveMDS_mse.R`: calculate MSE and relative error for the latent variables and sigma respectively
 
 `gaussian_grid.R`: simulate data from known Gaussian distributions and run HMC for a fixed sigma, returns the mean of the estimated latent locations across the iterations
 
@@ -18,7 +18,7 @@ The folder `code` contains five different folders. We briefly describe each one 
    
 3. `fluBMDS`: apply sBMDS variants to four influenza subtypes
 
-`flufunc.R`: functions to compute the viral latent locations' priors and posterior and run an HMC sampler
+`flufunc.R`: functions to compute the viral latent locations' priors and posteriors and run an HMC sampler
 
 `fluSampler.R`: create the influenza subtype tree and run the HMC sampler
 
