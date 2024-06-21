@@ -14,9 +14,9 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 `efficiency_comparison.R`: compare the time and the minimum effective sample size (ess) across different MCMC algorithms (MH, HMC) and BMDS variants (full BMDS, landmark sBMDS, banded sBMDS)
 
-3. `data_graphs`: simulation output used for the plots in the sBMDS manuscript
+2. `data_graphs`: simulation output used for the plots in the sBMDS manuscript
    
-4. `fluBMDS`: apply sBMDS variants to four influenza subtypes
+3. `fluBMDS`: apply sBMDS variants to four influenza subtypes
 
 `flufunc.R`: functions to compute the viral latent locations' priors and posterior and run an HMC sampler
 
@@ -24,9 +24,9 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 `fluPlots.R`: generate plots of viral diffusion rates and calculate Hellinger distances
    
-6. `results_graphs`: the plots in the sBMDS manuscript
+4. `results_graphs`: the plots in the sBMDS manuscript
    
-7. `rmd_files`: code used to generate the plots 
+5. `rmd_files`: code used to generate the plots 
 
 
 
