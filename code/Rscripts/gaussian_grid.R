@@ -47,7 +47,7 @@ dist_sim <- array(0, dim = c(dim(sim$latent)[1], size, size))
 
 for (t in 1:(dim(sim$latent)[1])){
   if (items > 1000){
-    subset <- sample(1:item, 1000)
+    subset <- sample(1:items, 1000)
     dist_sim[t, , ] <- as.matrix(dist(sim$latent[t, subset, ]))
   } else {
     dist_sim[t, , ] <- as.matrix(dist(sim$latent[t, , ]))
