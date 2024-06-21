@@ -4,15 +4,15 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 1. `Rscript`:
    
-`sBMDS_MassiveMDS_functions.R`: functions to compute sBMDS posterior distribution and MCMC sampling using the `MassiveMDS` package. This R package efficiently evaluates the sBMDS log-likelihoods and gradients and integraes directly into BEAST.
+`sBMDS_MassiveMDS_functions.R`: functions to compute sBMDS posterior distributions and MCMC algorithms using the `MassiveMDS` package. This R package efficiently evaluates the sBMDS log-likelihoods/gradients and integrates directly into BEAST. Because `MassiveMDS` contains C++ code, we found that it matches the theoretical speedups better than R code. We use this package in most of the Rscripts; however, users have the option to compute sBMDS log-likelihoods, gradients, posteriors, and MCMC algorithms directly in R in `sBMDS_functions.R`.
 
-`sBMDS_functions.R`: functions to compute sBMDS log-likelihood, gradient, posterior, and MCMC algorithms directly in R
+`MassiveMDS_rawllgrad.R`/ `llgrad_speedups.R`: give the computational time to evaluate the raw log-likelihood and gradient from the `MassiveMDS` package.
 
 `MassiveMDS_mse.R`: calculate MSE and relative error for latent variables and sigma respectively
 
-`MassiveMDS_rawllgrad.R`: give the computational time to evaluate the raw log-likelihood and gradient from the `MassiveMDS` package. 
+`gaussian_grid.R`: simulate data from known Gaussian distributions and run HMC for a fixed sigma, returns the mean of the estimated latent locations across the iterations
 
-`R_rawllgrad_eval.R`: same as above but uses the log-likelihood and gradient functions from the `sBMDS_functions.R` script
+`efficiency_comparison.R`: compares the time and the minimum effective sample size (ess) across different MCMC algorithms (MH, HMC) and BMDS variants (full BMDS, landmark sBMDS, banded sBMDS)
 
 3. `data_graphs`: simulation output used for the plots in the sBMDS manuscript
    
