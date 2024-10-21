@@ -411,3 +411,75 @@ plot(yam_Fcov50$SED, type = "l")
 plot(yam_Tcov50$SED, type = "l")
 ```
 
+## MDS plot
+```{r}
+h1_Fcoord50 <- read_csv("fluOutput/latent_coordFh150.csv", col_names = FALSE)
+h1_Fcoord50 <- as.matrix(h1_Fcoord50)
+
+taxon_country <- read_delim("locations_times.txt", 
+                            col_names = c("Taxon", "Region", "Country"))
+```
+```{r}
+# read distance matrix with all viral info
+fluCombi_Deff <- read.delim("fluCombi_Deff.txt", header = TRUE, row.names = 1)
+
+# select h1n1 subset  
+distMat <- fluCombi_Deff[1:1370, 1:1370]
+
+# same random sample as fluSampler.R
+set.seed(666)
+rand <- sample(1:nrow(distMat), nrow(distMat))
+distMatRand <- distMat[rand, rand]
+```
+
+```{r}
+loc_array <- array(NA, dim = c(2000, 1370, 6))
+loc_array[1, ,] <- matrix(h1_Fcoord50[1, ], nrow = 1370, ncol = 6)
+
+# procrusted align each mcmc iteration to the first one
+for (i in 1:dim(h1_Fcoord50)[1]){
+  loc_mcmc <- matrix(h1_Fcoord50[i, ], nrow = 1370, ncol = 6)
+  procrusted <- vegan::procrustes(loc_array[1, , ], loc_mcmc)
+  loc_array[i, ,] <- procrusted$Yrot
+}
+
+# take the mean across all iterations
+post_mean <- tibble(D1 = colMeans(loc_array[, , 1]), D2 = colMeans(loc_array[, , 2]), 
+                    country = taxon_country[rand, ]$Country, 
+                    region = taxon_country[rand, ]$Region) %>% mutate(., region2 = ifelse(region %in% c("SouthChina", "NorthChina", "SoutheastAsia", "China", "India", "JapanKorea"), "Asia", region))
+
+#post_mean <- matrix(colMeans(h1_Fcoord50), nrow = 1370, ncol = 6)
+#post_mean <- as_tibble(post_mean)
+
+# resample to make sure locations match country name
+#post_mean$country <- taxon_country[rand, ]$Country
+
+post_summary <- post_mean %>% 
+  group_by(country, region2) %>% 
+  summarise(mn1 = median(D1), mn2 = median(D2)) %>%
+  mutate(country = case_when(
+    country == "UnitedKingdom" ~ "UK",
+    country == "HongKong" ~ "Hong \n Kong",
+    country == "SouthKorea" ~ "South Korea",
+    TRUE ~ country  # Leave other country names unchanged
+  )) 
+
+pal <- c("Asia" = "darkred", "Europe" = "orangered2", "Oceania" = "darkgoldenrod1", 
+         "SouthAmerica" = "darkcyan", "USACanada" ="navyblue" )
+
+mds_plot <- post_summary %>% 
+  ggplot(aes(mn1, mn2, color = region2)) + 
+  geom_point(alpha = 0.85) + 
+  ggrepel::geom_text_repel(aes(label = country), 
+            data = subset(post_summary, country %in% c("USA", "Canada", "Japan", "India", "Hong \n Kong", "China", "UK", "Denmark", "France", "Netherlands", "South Korea", "Peru")), nudge_y = -0.15, show.legend = F, size = 3) + 
+  scale_color_manual(name = NULL, values = pal, labels = c("Asia", "Europe", "Oceania", "South America", "North America")) +
+  labs(x = "Latent dimension 1", y = "Latent dimnesion 2") + 
+  xlim(c(-4, 4)) + 
+  ylim(-4, 5.5) + 
+  theme_bw()
+```
+```{r}
+ggsave("fluMDS_plot.png", mds_plot, path = "~/sparseBMDS/code/fluBMDS",
+       bg = "white", width = 7, height = 3.5)
+```
+
