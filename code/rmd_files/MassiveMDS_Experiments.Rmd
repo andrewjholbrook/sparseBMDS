@@ -36,8 +36,8 @@ LM.1 <- mse_LM %>%
   geom_point(size = 1.2) +
   geom_line() + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
-  scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .1))
+  scale_color_manual(values = pal, name = "Number of \n data points") + 
+  labs(title = expression(sigma["true"] == .1))
 
 LM.2 <- mse_LM %>% 
   filter(SD == .2 & ITEM < 10000) %>% 
@@ -46,7 +46,7 @@ LM.2 <- mse_LM %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .2))
+  labs(title = expression(sigma["true"] == .2))
 
 LM.3 <- mse_LM %>% 
   filter(SD == .3 & ITEM < 10000) %>% 
@@ -55,7 +55,7 @@ LM.3 <- mse_LM %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .3))
+  labs(title = expression(sigma["true"] == .3))
 
 LM.4 <- mse_LM %>% 
   filter(SD == .4 & ITEM < 10000) %>% 
@@ -64,16 +64,16 @@ LM.4 <- mse_LM %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .4))
+  labs(title = expression(sigma["true"] == .4))
 ```
 ```{r}
 LM_all <- ggpubr::ggarrange(LM.1, LM.2, LM.3, LM.4, nrow = 2, ncol = 2, 
                             common.legend = TRUE, legend = "right")
 LM_all <- ggpubr::annotate_figure(LM_all, 
-                                  #top = "sBMDS accuracy as a function of landmarks & noise", 
+                                  top = "Accuracy with truncated normal noise", 
                                   left = "Mean of MSE across distances", 
                                   bottom = "Number of landmarks")
-#LM_all
+LM_all
 ggsave("mse_LM.png", plot = LM_all, path = "~/sparseBMDS/code/results_graphs",
        bg = "white", width = 7, height = 3.5)
 ```
@@ -89,7 +89,7 @@ BAND.1 <- mse_BAND %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .1))
+  labs(title = expression(sigma["true"] == .1))
 
 BAND.2 <- mse_BAND %>% 
   filter(SD == .2 & ITEM < 10000) %>% 
@@ -98,7 +98,7 @@ BAND.2 <- mse_BAND %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .2))
+  labs(title = expression(sigma["true"] == .2))
 
 BAND.3 <- mse_BAND %>% 
   filter(SD == .3 & ITEM < 10000) %>% 
@@ -107,7 +107,7 @@ BAND.3 <- mse_BAND %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .3))
+  labs(title = expression(sigma["true"] == .3))
 
 BAND.4 <- mse_BAND %>% 
   filter(SD == .4 & ITEM < 10000) %>% 
@@ -116,19 +116,20 @@ BAND.4 <- mse_BAND %>%
   geom_point(size = 1.2) + 
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Number of \n data points") +
-  labs(title = expression(sigma^{("true")} == .4))
+  labs(title = expression(sigma["true"] == .4))
 ```
 ```{r}
 BAND_all <- ggpubr::ggarrange(BAND.1, BAND.2, BAND.3, BAND.4, nrow = 2, 
                               ncol = 2, common.legend = TRUE, legend = "right")
 BAND_all <- ggpubr::annotate_figure(BAND_all, 
-                                    #top = "sBMDS accuracy as a function of bands & noise", 
+                                    top = "Accuracy with truncated normal noise", 
                                     left = "Mean of MSE across distances", 
                                     bottom = "Number of bands")
-#BAND_all
+BAND_all
 ggsave("mse_BAND.png", plot = BAND_all, path = "~/sparseBMDS/code/results_graphs",
        bg = "white", width = 7, height = 3.5)
 ```
+
 ### mse on distances for n = 10,000
 ```{r}
 theme_set(theme_bw())
@@ -145,7 +146,7 @@ MSE.1 <- mse_BAND %>% filter(ITEM == 10000 & SD == .1) %>%
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Method", 
                      labels = c("B-sBMDS", "L-sBMDS")) +
-  labs(title = expression(sigma^{("true")} == .1))
+  labs(title = expression(sigma["true"] == .1))
 
 MSE.2 <- mse_BAND %>% filter(ITEM == 10000 & SD == .2) %>% 
   mutate(METHOD = "BAND") %>% 
@@ -157,7 +158,7 @@ MSE.2 <- mse_BAND %>% filter(ITEM == 10000 & SD == .2) %>%
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Method",
                      labels = c("B-sBMDS", "L-sBMDS")) +
-  labs(title = expression(sigma^{("true")} == .2))
+  labs(title = expression(sigma["true"] == .2))
 
 MSE.3 <- mse_BAND %>% filter(ITEM == 10000 & SD == .3) %>% 
   mutate(METHOD = "BAND") %>% 
@@ -169,7 +170,7 @@ MSE.3 <- mse_BAND %>% filter(ITEM == 10000 & SD == .3) %>%
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Method",
                      labels = c("B-sBMDS", "L-sBMDS")) +
-  labs(title = expression(sigma^{("true")} == .3))
+  labs(title = expression(sigma["true"] == .3))
 
 MSE.4 <- mse_BAND %>% filter(ITEM == 10000 & SD == .4) %>% 
   mutate(METHOD = "BAND") %>% 
@@ -181,15 +182,16 @@ MSE.4 <- mse_BAND %>% filter(ITEM == 10000 & SD == .4) %>%
   scale_y_continuous(breaks = seq(.4, 1.6, .4)) +
   scale_color_manual(values = pal, name = "Method",
                      labels = c("B-sBMDS", "L-sBMDS")) +
-  labs(title = expression(sigma^{("true")} == .4))
+  labs(title = expression(sigma["true"] == .4))
 ```
 ```{r}
 MSE_all <- ggpubr::ggarrange(MSE.1, MSE.2, MSE.3, MSE.4, nrow = 2, 
                               ncol = 2, common.legend = TRUE, legend = "right")
 MSE_all <- ggpubr::annotate_figure(MSE_all, 
-                                   #top = "10000 data points",
+                                   top = "Accuracy with truncated normal noise",
                                    bottom = "Number of bands (landmarks)",
                                    left = "Mean of MSE across distances")
+MSE_all
 #MSE for n = 10,000
 ggsave("mse_n10000.png", plot = MSE_all, path = "~/sparseBMDS/code/results_graphs",
        bg = "white", width = 7, height = 3.5)
@@ -276,4 +278,220 @@ sBAND_all <- ggpubr::annotate_figure(sBAND_all,
                                      left = "Median sigma",
                                      bottom = "Number of bands")
 sBAND_all
+```
+
+### mis-specified cases 
+
+1. High-dimensional data with truncated noise
+
+```{r}
+# read data from node
+mse_HDLM <- read_csv("~/sparseBMDS/code/data_graphs/mse_HDLM.txt", 
+                     col_names = c("SD", "ITEM", "NUM", "DIM", "MSE", "MDSIG", 
+                                   "AR", "ARS"), 
+                     col_types = list("d", "d", "d", "d", "d", "d", "d"))
+mse_HDbands <- read_csv("~/sparseBMDS/code/data_graphs/mse_HDbands.txt", 
+                     col_names = c("SD", "ITEM", "NUM", "DIM", "MSE", "MDSIG", 
+                                   "AR", "ARS"), 
+                     col_types = list("d", "d", "d", "d", "d", "d", "d"))
+
+```
+```{r}
+# plot data
+theme_set(theme_bw())
+theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
+pal <- c("FULL" = "orangered2", "BAND" = "darkred", "LANDMARK" = "navyblue", "CMDS" = "darkcyan") 
+HD100 <- mse_HDLM %>% mutate(METHOD = ifelse(NUM < 100, "LANDMARK", "FULL")) %>% 
+  filter(ITEM == 100) %>% 
+  bind_rows(., mse_HDbands %>% 
+              mutate(METHOD = ifelse(is.na(NUM), "CMDS", "BAND")) %>% 
+              filter(ITEM == 100)) %>% 
+  ggplot(aes(DIM, MSE, color = METHOD)) +
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LANDMARK", "CMDS", "FULL"),
+                     labels = c("B-sBMDS \n (20 bands)", 
+                                "L-sBMDS \n (20 landmarks)", "Classical MDS", 
+                                "Full BMDS")) +
+  labs(title = "N = 100", x = NULL, y = NULL) + 
+  ylim(0, 8) + 
+  theme(legend.key.height = unit(0.9, "cm"))
+
+HD1000 <- mse_HDLM %>% mutate(METHOD = ifelse(NUM < 1000, "LANDMARK", "FULL")) %>% 
+  filter(ITEM == 1000 & NUM == 20) %>% 
+  bind_rows(., mse_HDbands %>% 
+              mutate(METHOD = ifelse(is.na(NUM), "CMDS", "BAND")) %>% 
+              filter(ITEM == 1000), 
+            mse_HDLM %>% 
+              mutate(METHOD = ifelse(NUM < 1000, "LANDMARK", "FULL")) %>% 
+              filter(METHOD == "FULL")) %>% 
+  ggplot(aes(DIM, MSE, color = METHOD)) +
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LANDMARK", "CMDS", "FULL"),
+                     labels = c("B-sBMDS \n (20 bands)", 
+                                "L-sBMDS \n (20 landmarks)", "Classical MDS", 
+                                "Full BMDS")) +
+  labs(title = "N = 1000", x = NULL, y = NULL) + 
+  ylim(0, 8) + 
+  theme(legend.key.height = unit(0.9, "cm"))
+```
+```{r}
+HD_all <- ggpubr::ggarrange(HD100, HD1000, ncol = 2, common.legend = TRUE, 
+                             legend = "right")
+HD_all <- ggpubr::annotate_figure(HD_all,
+                                   #top = "Number of data points", 
+                                   left = "Mean of the MSE across distances",
+                                   bottom = "True underlying dimensionality")
+ggsave("mse_HD.png", plot = HD_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
+```
+
+2. data with log-normal noise (long tails)
+
+```{r}
+mse_LT <- read_csv("~/sparseBMDS/code/data_graphs/mse_repLT.txt", 
+                     col_names = c("SD", "ITEM", "NUM", "METHOD", "MSE", "MDSIG", 
+                                   "AR", "ARS"), 
+                     col_types = list("d", "d", "d", "c", "d", "d", "d"))
+# mse_LT <- read_csv("~/sparseBMDS/code/data_graphs/mse_repLT.txt", 
+#                      col_names = c("SD", "ITEM", "NUM", "METHOD", "MSE", "MDSIG", 
+#                                    "AR", "ARS"), 
+#                      col_types = list("d", "d", "d", "c", "d", "d", "d"))
+```
+```{r}
+mse_LT %>% filter(NUM == 10 & SD == 0.1 & METHOD == "LM")
+```
+```{r}
+pal <- c("BAND" = "darkred", "LM" = "navyblue")
+LT.1 <- mse_LT %>% filter(SD == 0.1) %>% group_by(NUM, METHOD) %>% 
+  summarize(mn = mean(MSE), sd = sd(MSE), mn.min = min(MSE), mn.max = max(MSE)) %>% 
+  ggplot(aes(x = NUM, y = mn, color = METHOD)) +
+  geom_point(size = 1.2, position = position_dodge(width = 3)) + 
+  geom_linerange(aes(ymin = mn - sd, ymax = mn + sd), position = position_dodge(width = 3)) + 
+  #geom_linerange(aes(ymin = mn.min, ymax = mn.max), position = position_dodge(width = 3)) + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma["true"] == .1), x = NULL, y = NULL) + 
+  scale_y_continuous(breaks = seq(.5, 2.0, 0.5), limit = c(.5, 2.0)) + 
+  scale_x_continuous(breaks = seq(0, 100, 20)) + 
+  theme_bw()
+
+LT.2 <- mse_LT %>% filter(SD == 0.2) %>% group_by(NUM, METHOD) %>% 
+  summarize(mn = mean(MSE), sd = sd(MSE), mn.min = min(MSE), mn.max = max(MSE)) %>% 
+  ggplot(aes(x = NUM, y = mn, color = METHOD)) +
+  geom_point(size = 1.2, position = position_dodge(width = 3)) + 
+  geom_linerange(aes(ymin = mn - sd, ymax = mn + sd), position = position_dodge(width = 3)) + 
+  #geom_linerange(aes(ymin = mn.min, ymax = mn.max), position = position_dodge(width = 3)) + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma["true"] == .2), x = NULL, y = NULL) + 
+  scale_y_continuous(breaks = seq(.5, 2.0, 0.5), limit = c(.5, 2.0)) + 
+  scale_x_continuous(breaks = seq(0, 100, 20)) + 
+  theme_bw()
+
+LT.3 <- mse_LT %>% filter(SD == 0.3) %>% group_by(NUM, METHOD) %>% 
+  summarize(mn = mean(MSE), sd = sd(MSE), mn.min = min(MSE), mn.max = max(MSE)) %>% 
+  ggplot(aes(x = NUM, y = mn, color = METHOD)) +
+  geom_point(size = 1.2, position = position_dodge(width = 3)) + 
+  geom_linerange(aes(ymin = mn - sd, ymax = mn + sd), position = position_dodge(width = 3)) + 
+  #geom_linerange(aes(ymin = mn.min, ymax = mn.max), position = position_dodge(width = 3)) + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma["true"] == .3), x = NULL, y = NULL) + 
+  scale_y_continuous(breaks = seq(.5, 2.0, 0.5), limit = c(.5, 2.0)) + 
+  scale_x_continuous(breaks = seq(0, 100, 20)) + 
+  theme_bw()
+
+LT.4 <- mse_LT %>% filter(SD == 0.4) %>% group_by(NUM, METHOD) %>% 
+  summarize(mn = mean(MSE), sd = sd(MSE), mn.min = min(MSE), mn.max = max(MSE)) %>% 
+  ggplot(aes(x = NUM, y = mn, color = METHOD)) +
+  geom_point(size = 1.2, position = position_dodge(width = 3)) + 
+  geom_linerange(aes(ymin = mn - sd, ymax = mn + sd), position = position_dodge(width = 3)) + 
+  #geom_linerange(aes(ymin = mn.min, ymax = mn.max), position = position_dodge(width = 3)) + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(sigma["true"] == .4), x = NULL, y = NULL) + 
+  scale_y_continuous(breaks = seq(.5, 2.0, 0.5), limit = c(.5, 2.0)) + 
+  scale_x_continuous(breaks = seq(0, 100, 20)) + 
+  theme_bw()
+```
+```{r}
+LT_all <- ggpubr::ggarrange(LT.1, LT.2, LT.3, LT.4, nrow = 2, 
+                              ncol = 2, common.legend = TRUE, legend = "right")
+LT_all <- ggpubr::annotate_figure(LT_all, 
+                                   top = "Accuracy with log-normal noise",
+                                   bottom = "Number of bands (landmarks)",
+                                   left = "Mean of MSE across distances")
+LT_all
+
+ggsave("mse_LT.png", plot = LT_all, path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
+```
+
+```{r}
+pal <- c("BAND" = "darkred", "LM" = "navyblue")
+LT.1 <- mse_LT %>% filter(ITEM == 1000 & SD == 0.1) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), #, "CMDS", "FULL"),
+                     labels = c("B-sBMDS", 
+                                "L-sBMDS")) + #, "Classical MDS", 
+                                #"Full BMDS")) +
+  labs(title = expression(sigma["true"] == .1), x = NULL, y = NULL) + 
+  theme_bw()
+
+LT.2 <- mse_LT %>% filter(ITEM == 1000 & SD == 0.2) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), #, "CMDS", "FULL"),
+                     labels = c("B-sBMDS", 
+                                "L-sBMDS")) + #, "Classical MDS", 
+                                #"Full BMDS")) +
+  labs(title = expression(sigma["true"] == .2), x = NULL, y = NULL) + 
+  theme_bw()
+
+LT.3 <- mse_LT %>% filter(ITEM == 1000 & SD == 0.3) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), #, "CMDS", "FULL"),
+                     labels = c("B-sBMDS", 
+                                "L-sBMDS")) + #, "Classical MDS", 
+                                #"Full BMDS")) +
+  labs(title = expression(sigma["true"] == .3), x = NULL, y = NULL) + 
+  theme_bw()
+
+LT.4 <- mse_LT %>% filter(ITEM == 1000 & SD == 0.4) %>% 
+  ggplot(aes(x = NUM, y = MSE, color = METHOD)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"), #, "CMDS", "FULL"),
+                     labels = c("B-sBMDS", 
+                                "L-sBMDS")) + #, "Classical MDS", 
+                                #"Full BMDS")) +
+  labs(title = expression(sigma["true"] == .4), x = NULL, y = NULL) + 
+  theme_bw()
+```
+```{r}
+LT_all <- ggpubr::ggarrange(LT.1, LT.2, LT.3, LT.4, nrow = 2, 
+                              ncol = 2, common.legend = TRUE, legend = "right")
+LT_all <- ggpubr::annotate_figure(LT_all, 
+                                   top = "Accuracy with log-normal noise",
+                                   bottom = "Number of bands (landmarks)",
+                                   left = "Mean of MSE across distances")
+LT_all
+#MSE for n = 10,000
+# ggsave("mse_n10000.png", plot = MSE_all, path = "~/sparseBMDS/code/results_graphs",
+#        bg = "white", width = 7, height = 3.5)
 ```

@@ -421,7 +421,7 @@ p1.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
   mutate(., color = latent_tib$color) %>%
   ggplot(aes(V1, V2)) +
   geom_point(aes(color = color)) +
-  labs(x = NULL, y = "10 landmarks", title = expression(sigma^{("true")} == .1)) +
+  labs(x = NULL, y = "10 landmarks", title = expression(sigma["true"] == .1)) +
   xlim(c(-4, 4)) +
   ylim(c(-4, 4)) +
   scale_color_manual(values = pal)
@@ -433,7 +433,7 @@ p2.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
   mutate(., color = latent_tib$color) %>%
   ggplot(aes(V1, V2)) +
   geom_point(aes(color = color)) +
-  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .2)) +
+  labs(x = NULL, y = "", title = expression(sigma["true"] == .2)) +
   xlim(c(-4, 4)) +
   ylim(c(-4, 4)) +
   scale_color_manual(values = pal)
@@ -445,7 +445,7 @@ p3.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
   mutate(., color = latent_tib$color) %>%
   ggplot(aes(V1, V2)) +
   geom_point(aes(color = color)) +
-  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .3)) +
+  labs(x = NULL, y = "", title = expression(sigma["true"] == .3)) +
   xlim(c(-4, 4)) +
   ylim(c(-4, 4)) +
   scale_color_manual(values = pal)
@@ -457,7 +457,7 @@ p4.10 <- as_tibble(vegan::procrustes(latent, gauss.error %>%
   mutate(., color = latent_tib$color) %>%
   ggplot(aes(V1, V2)) +
   geom_point(aes(color = color)) +
-  labs(x = NULL, y = "", title = expression(sigma^{("true")} == .4)) +
+  labs(x = NULL, y = "", title = expression(sigma["true"] == .4)) +
   xlim(c(-4, 4)) +
   ylim(c(-4, 4)) +
   scale_color_manual(values = pal)
