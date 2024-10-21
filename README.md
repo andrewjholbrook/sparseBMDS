@@ -8,7 +8,7 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 `MassiveMDS_rawllgrad.R`/ `llgrad_speedups.R`: output the computational time to evaluate the raw log-likelihood and gradient from the `MassiveMDS` package.
 
-`MassiveMDS_mse.R`/ `LT_mse.R`/`HD_mse.R`: calculate MSE and median error for the latent variables and sigma respectively (under specified and misspecified cases)
+`MassiveMDS_mse.R`/ `LT_mse.R`/`HD_mse.R`: calculate mean MSE and median error for the latent variables and sigma respectively (under specified and misspecified cases)
 
 `gaussian_grid.R`: simulate data from known Gaussian distributions and run HMC for a fixed sigma, returns the mean of the estimated latent locations across the iterations
 
