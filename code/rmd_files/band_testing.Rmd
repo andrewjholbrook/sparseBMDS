@@ -1,0 +1,134 @@
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# read in MCMC chains
+chain1 <- read_csv("chain_cosnp_B68_D3.csv", col_names = FALSE)
+chain2 <- read_csv("chain_cosnp_B95_D3.csv", col_names = FALSE)
+chain3 <- read_csv("chain_cosnp_B112_D5.csv", col_names = FALSE)
+chain4 <- read_csv("chain_cosnp_B56_D5.csv", col_names = FALSE)
+
+latloc1 <- read_csv("latent_cosnp_B68_D3.csv", col_names = FALSE)
+latloc1 <- as.matrix(latloc1)
+latloc2 <- read_csv("latent_cosnp_B95_D3.csv", col_names = FALSE)
+latloc2 <- as.matrix(latloc2)
+latloc3 <- read_csv("latent_cosnp_B112_D5.csv", col_names = FALSE)
+latloc3 <- as.matrix(latloc3)
+latloc4 <- read_csv("latent_cosnp_B56_D5.csv", col_names = FALSE)
+latloc4 <- as.matrix(latloc4)
+```
+
+```{r}
+plot(chain1$X1, type = "l"); plot(chain1$X2, type = "l")
+plot(chain2$X1, type = "l"); plot(chain2$X2, type = "l")
+plot(chain3$X1, type = "l"); plot(chain3$X2, type = "l")
+plot(chain4$X1, type = "l"); plot(chain4$X2, type = "l")
+```
+
+```{r}
+I <- dim(latloc1)[1]
+
+loc_array1 <- array(NA, dim = c(300, 500, 3))
+loc_array2 <- array(NA, dim = c(300, 1000, 3))
+loc_array3 <- array(NA, dim = c(300, 500, 5))
+loc_array4 <- array(NA, dim = c(300, 500, 5))
+
+loc_array1[1, ,] <- matrix(latloc1[201, ], nrow = 500, ncol = 3)
+loc_array2[1, ,] <- matrix(latloc2[201, ], nrow = 1000, ncol = 3)
+loc_array3[1, ,] <- matrix(latloc3[201, ], nrow = 500, ncol = 5)
+loc_array4[1, ,] <- matrix(latloc4[201, ], nrow = 500, ncol = 5)
+
+
+k <- 1
+# procrusted align each mcmc iteration to the first one
+for (i in 202:I){
+  k <- k + 1
+  loc_mcmc <- matrix(latloc1[i, ], nrow = 500, ncol = 3)
+  procrusted <- hm_procrustes(500, loc_array1[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array1[1, , ], loc_mcmc, scale = TRUE)
+  loc_array1[k, ,] <- procrusted#$Yrot
+  
+  loc_mcmc <- matrix(latloc2[i, ], nrow = 1000, ncol = 3)
+  procrusted <- hm_procrustes(1000, loc_array2[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array2[1, , ], loc_mcmc, scale = TRUE)
+  loc_array2[k, ,] <- procrusted#$Yrot
+  
+  loc_mcmc <- matrix(latloc3[i, ], nrow = 500, ncol = 5)
+  procrusted <- hm_procrustes(500, loc_array3[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array3[1, , ], loc_mcmc, scale = TRUE)
+  loc_array3[k, ,] <- procrusted#$Yrot
+  
+  loc_mcmc <- matrix(latloc4[i, ], nrow = 500, ncol = 5)
+  procrusted <- hm_procrustes(500, loc_array4[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array3[1, , ], loc_mcmc, scale = TRUE)
+  loc_array4[k, ,] <- procrusted#$Yrot
+}
+```
+
+```{r}
+mn_mat1 <- matrix(c(colMeans(loc_array1[, , 1]), colMeans(loc_array1[, , 2]),
+                    colMeans(loc_array1[, , 3])), 
+                  nrow = 500, ncol = 3)
+mn_mat2 <- matrix(c(colMeans(loc_array2[, , 1]), colMeans(loc_array2[, , 2]), 
+                    colMeans(loc_array2[, , 3])), 
+                 nrow = 1000, ncol = 3)
+mn_mat3 <- matrix(c(colMeans(loc_array3[, , 1]), colMeans(loc_array3[, , 2]), 
+                    colMeans(loc_array3[, , 3]), colMeans(loc_array3[, , 4]),
+                    colMeans(loc_array3[, , 5])), 
+                 nrow = 500, ncol = 5)
+mn_mat4 <- matrix(c(colMeans(loc_array4[, , 1]), colMeans(loc_array4[, , 2]), 
+                    colMeans(loc_array4[, , 3]), colMeans(loc_array4[, , 4]),
+                    colMeans(loc_array4[, , 5])),
+                 nrow = 500, ncol = 5)
+```
+```{r}
+clust_mn1 <- dbscan::hdbscan(x = mn_mat1, minPts = 8)
+dbscan::hullplot(mn_mat1, clust_mn1)
+clust_mn1
+
+clust_mn2 <- dbscan::hdbscan(x = mn_mat2, minPts = 8)
+dbscan::hullplot(mn_mat2, clust_mn2)
+clust_mn2
+
+clust_mn3 <- dbscan::hdbscan(x = mn_mat3, minPts = 8)
+dbscan::hullplot(mn_mat3, clust_mn3)
+clust_mn3
+
+clust_mn4 <- dbscan::hdbscan(x = mn_mat4, minPts = 8)
+dbscan::hullplot(mn_mat4, clust_mn4)
+clust_mn4
+```
+
+```{r}
+hellD <- read_csv("~/sparseBMDS/code/data_graphs/band_HellD2.txt", 
+                  col_names = c("items", "dim", "band", "HellD"))
+head(hellD)
+```
+```{r}
+pal <- c("50" = "orangered2", "100" = "darkgoldenrod1", "250" = "lightgoldenrod", 
+         "500" = "darkcyan", "1000" = "navyblue")
+hellD %>% #mutate(ratio = HellD / HellD[5]) %>% 
+  ggplot(aes(dim, HellD, colour = factor(items))) +
+  geom_point() + 
+  scale_colour_manual(name = "Number of \n data points", values = pal) + 
+  theme_bw() + 
+  labs(title = NULL, x = "Latent dimension", y = "Hellinger Distance")
+
+BS <- hellD %>% group_by(dim) %>% mutate(ratio = HellD / HellD[2]) %>% 
+  ggplot(aes(dim, ratio, colour = factor(items))) +
+  geom_point() + 
+  #geom_line(lty = 2) + 
+  scale_colour_manual(name = "Number of \n data points", values = pal) + 
+  theme_bw() + 
+  labs(title = NULL, x = "Underlying dimensionality", 
+       y = "Ratio of mean Hellinger distances")
+
+BS <- ggpubr::annotate_figure(BS, top = "Band sensitivity")
+ggsave("band_sensitivity.png", BS,
+       path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
+
+#hellD %>% filter(dim == 4)
+```
+

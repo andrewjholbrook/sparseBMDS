@@ -1,0 +1,568 @@
+
+1. Import libraries
+```{r}
+library(tidyverse)
+```
+2. Read in MCMC output
+```{r}
+# read in MCMC chains
+chain1 <- read_csv("results_full/chain_corenp_B50.csv", col_names = FALSE)
+chain2 <- read_csv("results_full/chain_corenp_B100.csv", col_names = FALSE)
+chain3 <- read_csv("results_full/chain_corenp_B500.csv", col_names = FALSE)
+chain4 <- read_csv("results_full/chain_corenp_B1000.csv", col_names = FALSE)
+chain5 <- read_csv("results_full/chain_corenp_B2000.csv", col_names = FALSE)
+
+latloc1 <- read_csv("results_full/latent_corenp_B50.csv", col_names = FALSE)
+latloc1 <- as.matrix(latloc1)
+latloc2 <- read_csv("results_full/latent_corenp_B100.csv", col_names = FALSE)
+latloc2 <- as.matrix(latloc2)
+latloc3 <- read_csv("results_full/latent_corenp_B500.csv", col_names = FALSE)
+latloc3 <- as.matrix(latloc3)
+latloc4 <- read_csv("results_full/latent_corenp_B1000.csv", col_names = FALSE)
+latloc4 <- as.matrix(latloc4)
+latloc5 <- read_csv("results_full/latent_corenp_B2000.csv", col_names = FALSE)
+latloc5 <- as.matrix(latloc5)
+```
+
+3. Read in data
+```{r}
+#cos_mini <- read_csv("arXivScrape_cos.csv", col_names = FALSE)
+#dist_mini <- 1 - cos_mini
+#diag(dist_mini) <- 0
+df_mini <- read_csv("arXivScrape_filtered.csv", col_names = TRUE)
+
+df_mini$subject <- c(rep("math", 1411), rep("physics", 1838), rep("stat", 5361),
+                     rep("econ", 698))
+
+set.seed(12345)
+shuffle <- sample(1:nrow(df_mini), nrow(df_mini))
+df_shuffled = df_mini[shuffle, ]
+#miniX <- cmdscale(as.matrix(dist_mini[shuffle, shuffle]), k = 2)
+```
+
+4. Look at target and sigma chains, and one latent location
+```{r}
+plot(chain1$X1[-(1:2000)], type = "l") 
+coda::effectiveSize(chain1$X1[-(1:4000)])
+
+plot(chain2$X1[-(1:2000)], type = "l") 
+coda::effectiveSize(chain2$X1[-(1:4000)])
+
+plot(chain3$X1[-(1:2000)], type = "l") 
+coda::effectiveSize(chain3$X1[-(1:4000)])
+
+plot(chain4$X1[-(1:4000)], type = "l")
+coda::effectiveSize(chain4$X1[-(1:4600)])
+
+plot(chain5$X1[-(1:4000)], type = "l")
+coda::effectiveSize(chain5$X1[-(1:4000)])
+```
+```{r}
+plot(chain1$X2, type = "l")
+coda::effectiveSize(chain1$X2)
+
+plot(chain2$X2, type = "l")
+coda::effectiveSize(chain2$X2)
+
+plot(chain3$X2, type = "l")
+coda::effectiveSize(chain3$X2)
+
+plot(chain4$X2[-(1:4000)], type = "l") 
+coda::effectiveSize(chain4$X2)
+
+plot(chain5$X2[-(1:4000)], type = "l") 
+coda::effectiveSize(chain5$X2)
+
+
+plot(matrix(latloc1[4000, ], nrow = 9308, ncol = 2))
+plot(matrix(latloc2[4000, ], nrow = 9308, ncol = 2))
+plot(matrix(latloc3[3000, ], nrow = 9308, ncol = 2))
+plot(matrix(latloc4[2000, ], nrow = 9308, ncol = 2))
+plot(matrix(latloc5[1400, ], nrow = 9308, ncol = 2))
+```
+```{r}
+hm_procrustes <- function(n, X_star, X){
+  ones <- rep(1, n)
+  J <- diag(n) - (ones %*% t(ones)) / n
+  C <- t(X_star) %*% J %*% X
+  SVD <- svd(C)
+  Tvec <- SVD$v %*% t(SVD$u)
+  tvec <- (t(X_star - X %*% Tvec) %*% ones) / n 
+  X <- X %*% Tvec + ones %*% t(tvec)
+  return(X)
+}
+
+# procrusted <- vegan::procrustes(miniX2, laB50_cos[1, , ])
+# plot(hm_procrustes(500, miniX2, laB50_cos[1, , ]))
+# plot(procrusted$Yrot)
+```
+
+5. Create a location array across iterations
+```{r}
+I <- dim(latloc1)[1]
+N <- 9308 
+dims <- 2
+
+loc_array1 <- array(NA, dim = c(1000, N, dims))
+loc_array2 <- array(NA, dim = c(1000, N, dims))
+loc_array3 <- array(NA, dim = c(1000, N, dims))
+loc_array4 <- array(NA, dim = c(400, N, dims))
+loc_array5 <- array(NA, dim = c(1000, N, dims))
+
+loc_array1[1, ,] <- matrix(latloc1[4001, ], nrow = N, ncol = dims)
+loc_array2[1, ,] <- matrix(latloc2[4001, ], nrow = N, ncol = dims)
+loc_array3[1, ,] <- matrix(latloc3[4001, ], nrow = N, ncol = dims)
+loc_array4[1, ,] <- matrix(latloc4[4601, ], nrow = N, ncol = dims)
+loc_array5[1, ,] <- matrix(latloc5[4001, ], nrow = N, ncol = dims)
+
+
+k <- 1
+# procrusted align each mcmc iteration to the first one
+for (i in 4002:I){
+  k <- k + 1
+  loc_mcmc <- matrix(latloc1[i, ], nrow = N, ncol = dims)
+  procrusted <- hm_procrustes(N, loc_array1[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array1[1, , ], loc_mcmc, scale = TRUE)
+  loc_array1[k, ,] <- procrusted#$Yrot
+  
+  loc_mcmc <- matrix(latloc2[i, ], nrow = N, ncol = dims)
+  procrusted <- hm_procrustes(N, loc_array2[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array2[1, , ], loc_mcmc, scale = TRUE)
+  loc_array2[k, ,] <- procrusted#$Yrot
+  
+  loc_mcmc <- matrix(latloc3[i, ], nrow = N, ncol = dims)
+  procrusted <- hm_procrustes(N, loc_array3[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array3[1, , ], loc_mcmc, scale = TRUE)
+  loc_array3[k, ,] <- procrusted#$Yrot
+}
+
+k <- 1
+for (i in 4602:I){
+  k <- k + 1
+  loc_mcmc <- matrix(latloc4[i, ], nrow = N, ncol = dims)
+  procrusted <- hm_procrustes(N, loc_array4[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array4[1, , ], loc_mcmc, scale = TRUE)
+  loc_array4[k, ,] <- procrusted#$Yrot
+}
+
+k <- 1
+for (i in 4002:5000){
+  k <- k + 1
+  loc_mcmc <- matrix(latloc5[i, ], nrow = N, ncol = dims)
+  procrusted <- hm_procrustes(N, loc_array5[1, , ], loc_mcmc)
+  #procrusted <- vegan::procrustes(loc_array4[1, , ], loc_mcmc, scale = TRUE)
+  loc_array5[k, ,] <- procrusted#$Yrot
+}
+
+mn_mat1 <- matrix(c(colMeans(loc_array1[, , 1]), colMeans(loc_array1[, , 2])), 
+                 nrow = N, ncol = 2)
+mn_mat2 <- matrix(c(colMeans(loc_array2[, , 1]), colMeans(loc_array2[, , 2])), 
+                 nrow = N, ncol = 2)
+mn_mat3 <- matrix(c(colMeans(loc_array3[, , 1]), colMeans(loc_array3[, , 2])), 
+                 nrow = N, ncol = 2)
+mn_mat4 <- matrix(c(colMeans(loc_array4[, , 1]), colMeans(loc_array4[, , 2])),
+                 nrow = N, ncol = 2)
+mn_mat5 <- matrix(c(colMeans(loc_array5[, , 1]), colMeans(loc_array5[, , 2])),
+                 nrow = N, ncol = 2)
+```
+
+```{r}
+pal <- c("math" = "red", "stat" = "lightblue", 
+         "physics" = "yellow", "econ" = "darkgreen")
+
+as_tibble(mn_mat1) %>% mutate(cat = df_shuffled$subject) %>%
+  ggplot(aes(V1, V2, colour = cat)) +
+  geom_point() + 
+  scale_colour_manual(values = pal) + 
+  labs(title = "b = 50, no prior")
+
+as_tibble(mn_mat2) %>% mutate(cat = df_shuffled$subject) %>% #label_cat(df_shuffled$categories)) %>% 
+  ggplot(aes(V1, V2, colour = cat)) +
+  geom_point() + 
+  scale_colour_manual(values = pal) + 
+  labs(title = "b = 100, no prior")
+
+as_tibble(mn_mat3) %>% mutate(cat = df_shuffled$subject) %>%
+  ggplot(aes(V1, V2, colour = cat)) +
+  geom_point() + 
+  scale_colour_manual(values = pal) + 
+  labs(title = "b = 500, no prior")
+
+as_tibble(mn_mat4) %>% mutate(cat = df_shuffled$subject) %>%
+  ggplot(aes(V1, V2, colour = cat)) +
+  geom_point() +
+  scale_colour_manual(values = pal) +
+  labs(title = "b = 1000, prior no shuffle")
+
+as_tibble(mn_mat5) %>% mutate(cat = df_shuffled$subject) %>%
+  ggplot(aes(V1, V2, colour = cat)) +
+  geom_point() +
+  scale_colour_manual(values = pal) +
+  labs(title = "b = 2000, prior no shuffle")
+```
+
+```{r}
+clust_mn1 <- dbscan::hdbscan(x = mn_mat1, minPts = 40)
+dbscan::hullplot(mn_mat1, clust_mn1)
+clust_mn1
+
+clust_mn2 <- dbscan::hdbscan(x = mn_mat2, minPts = 40)
+dbscan::hullplot(mn_mat2, clust_mn2)
+clust_mn2
+
+clust_mn3 <- dbscan::hdbscan(x = mn_mat3, minPts = 40)
+dbscan::hullplot(mn_mat3, clust_mn3)
+clust_mn3
+
+clust_mn4 <- dbscan::hdbscan(x = mn_mat4, minPts = 40)
+dbscan::hullplot(mn_mat4, clust_mn4)
+clust_mn4
+
+clust_mn5 <- dbscan::hdbscan(x = mn_mat5, minPts = 40)
+dbscan::hullplot(mn_mat5, clust_mn5)
+clust_mn5
+
+clust_mds <- dbscan::hdbscan(x = miniX, minPts = 40)
+dbscan::hullplot(miniX, clust_mds)
+clust_mds
+
+#sum(str_detect(df_shuffled[which(clust_mn2$cluster == 4), ]$categories, "math.lo"))
+
+# hc <- hclust(dist(mn_mat), method = "complete")
+# #plot(hc)
+# clust_assign <- cutree(hc, k = 4)
+# clust_assign
+# View(df_mini[which(clust_assign == 4), ])
+```
+
+5. Compute bagged DBSCAN
+
+```{r}
+# assign to cluster whose mean is the short distance away
+noise_assign <- function(X, noise_pts, clust){
+  X_noise <- X[noise_pts, ]
+  clust_no <- length(unique(clust$cluster)) - 1
+  cluster_mns <- sapply(1:clust_no, 
+                        function(x){colMeans(X[which(clust$cluster == x), ])})
+  noise_clust <- sapply(1:length(noise_pts), function(x){
+    if (length(noise_pts) == 1){
+      which.min(sqrt(colSums((X_noise - cluster_mns)**2)))
+    } else {
+      which.min(sqrt(colSums((X_noise[x, ] - cluster_mns)**2)))
+    }
+    })
+  return(noise_clust)
+}
+
+# find mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# bootstrap cluster assignments & assign noise pts to cluster
+
+boot_clust <- function(X_array, Nsamples, minPts){
+  clust_list = list()
+  clust_num <- c()
+  B <- sample(1:dim(X_array)[1], Nsamples)
+  iter <- 1
+  for (i in B){
+    X <- X_array[i, , ]
+    clusting <- dbscan::hdbscan(X_array[i, , ], minPts = minPts)
+    # noise_pts <- which(clusting$cluster == 0)
+    # if (length(noise_pts) != 0){
+    #   na <- noise_assign(X_array[i, , ], noise_pts, clusting)
+    #   clusting$cluster[noise_pts] <- na
+    # }
+    clust_list[[iter]] <- clusting$cluster
+    clust_num[iter] <- length(unique(clusting$cluster))
+    iter <- iter + 1
+  }
+  return(list(clust_list = clust_list, clust_num = clust_num))
+}
+
+# create co-clustering matrix
+
+co_clust <- function(bootClust, N){
+  clust_mat <- matrix(NA, nrow = N, ncol = N)
+  B <- length(bootClust$clust_num)
+  
+  for (i in 1:B){
+    c <- bootClust$clust_list[[i]]
+    for (j in 1:(N - 1)){
+      for (k in (j + 1):N){
+        if (c[j] == c[k] & c[j] != 0){
+          clust_mat[j, k] <- sum(c(clust_mat[j, k], 1), na.rm = T)
+        }
+      }
+    }
+  }
+  
+  co_dbscan <- clust_mat / B
+  co_dbscan[lower.tri(co_dbscan)] <- co_dbscan[upper.tri(co_dbscan)]
+  diag(co_dbscan) <- 1
+  return(list(clust_mat = clust_mat, co_dbscan = co_dbscan))
+}
+
+# clust2$cluster
+# clust2$cluster[which(clust2$cluster == 0)] <- noise_assign(loc_array[350, , ], which(clust2$cluster == 0), clust2)
+# # noise_assign(mn_mat, which(clust3$cluster == 0), clust3)
+# dbscan::hullplot(loc_array[350, , ], clust2)
+```
+
+```{r}
+# compute clust across iters
+set.seed(12345)
+# BCB50_cos <- boot_clust(loc_array1, 200, 40)
+# BCB100_cos <- boot_clust(loc_array2, 200, 40)
+# BCB500_cos <- boot_clust(loc_array3, 200, 40)
+# BCB1000_cos <- boot_clust(loc_array4, 200, 40)
+BCB2000_cos <- boot_clust(loc_array5, 200, 40)
+
+# hist(BCB50_cos$clust_num)
+# hist(BCB100_cos$clust_num)
+# hist(BCB500_cos$clust_num)
+# hist(BCB1000_cos$clust_num)
+hist(BCB2000_cos$clust_num)
+
+# create co-clustering matrix across iters - posterior prob that i, j are in the
+# same cluster
+# CCB100_cos <- co_clust(BCB100_cos, 1929)
+# CCB200_cos <- co_clust(BCB200_cos, 1929)
+# CCB500_cos <- co_clust(BCB500_cos, 1929)
+```
+```{r}
+#install.packages("ggforce")
+library(ggforce)
+pal <- c("1" = "orangered2", "3" = "darkgoldenrod1", "2" = "darkcyan", "4" = "navyblue")
+
+match_clusters <- function(reference_labels, target_labels){
+  ref_clusters <- unique(reference_labels)
+  target_clusters <- unique(target_labels)
+  mapping <- rep(NA, length(target_clusters))
+  
+  for (t_clust in target_clusters) {
+    overlaps <- sapply(ref_clusters, function(r_clust) {
+      sum(reference_labels == r_clust & target_labels == t_clust)
+    }) # match over greatest overlap
+    best_match <- ref_clusters[which.max(overlaps)]
+    mapping[target_labels == t_clust] <- best_match
+  }
+  return(mapping)
+}
+
+same_clustno = which(BCB2000_cos$clust_num == Mode(BCB2000_cos$clust_num))
+
+clust_long <- lapply(2:6, function(i){
+  relabeled <- match_clusters(BCB2000_cos$clust_list[[same_clustno[1]]],
+                              BCB2000_cos$clust_list[[same_clustno[i]]])
+  # relabeled <- match_clusters(BCB100_cos$clust_list[[2]], 
+  #                             BCB100_cos$clust_list[[i]])
+  tibble(id = 1:nrow(mn_mat5), cat = factor(relabeled), 
+         clustering_run = paste0("Run ", i))
+  }) %>%
+  bind_rows()
+
+clust_plot <- as_tibble(mn_mat5) %>% mutate(id = row_number()) %>% 
+  left_join(., clust_long, by = "id") %>% 
+  ggplot(aes(V1, V2)) + 
+  geom_point(size = 1.2, col = "azure4") + 
+  geom_mark_hull(aes(group = interaction(clustering_run, cat), fill = cat, 
+                     filter = cat != 0), 
+                 concavity = 100, expand = unit(2, "mm"), alpha = 0.1, 
+                 show.legend = T) + 
+  scale_fill_manual(name = "ArXiv subject", values = pal, 
+                    labels = c("Physics", "Math", "Economics", "Statistics"), 
+                    guide = guide_legend(override.aes = list(alpha = 0.5))) + 
+  theme_bw() + 
+  labs(title = NULL, x = NULL, y = NULL)
+
+clust_plot <- ggpubr::annotate_figure(clust_plot, top = "Overlayed Cluster Hulls")
+
+ggsave("arXiv_clusters.png", clust_plot,
+       path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3)
+
+# as_tibble(mn_mat1) %>% mutate(cat = factor(BCB100_cos$clust_list[[2]])) %>% 
+#   ggplot(aes(V1, V2)) + 
+#   geom_point(size = 1.2) + 
+#   ggforce::geom_mark_hull(aes(fill = cat, filter = cat != 0), concavity = 100, 
+#                  expand = unit(2, "mm"), alpha = 0.3, radius = unit(0, "mm")) + 
+#   theme_bw() + 
+#   labs(title = "Cluster Hulls")
+# 
+# hullplot(mn_mat1, BCB100_cos$clust_list[[2]])
+# hullplot(mn_mat1, BCB100_cos$clust_list[[3]])
+
+clust_plot
+```
+
+```{r}
+## error classifiers
+
+# label cluster based on what category it has the most of 
+clust_label <- function(df, clust_list, clust.no){
+  math.no <- sum(str_detect(df[which(clust_list == clust.no), ]$subject, 
+                            "math")) 
+  stat.no <- sum(str_detect(df[which(clust_list == clust.no), ]$subject, 
+                            "stat")) 
+  phys.no <- sum(str_detect(df[which(clust_list == clust.no), ]$subject, 
+                            "physics")) 
+  econ.no <- sum(str_detect(df[which(clust_list == clust.no), ]$subject, 
+                            "econ"))
+  
+  label <- which.max(c(math.no, stat.no, phys.no, econ.no))
+  if (label == 1){
+    return("math")
+  } 
+  if (label == 2){
+    return("stat")
+  }
+  if (label == 3){
+    return("physics")
+  }
+  return("econ")
+}
+
+#clust_label(df_shuffled, BCB500_cos$clust_list[[1]], 5)
+
+error_calc <- function(df, clust_list){
+  K <- unique(clust_list)
+  K_TP <- c()
+  labeled <- c()
+  for (k in K){
+    if (k != 0){
+      label <- clust_label(df, clust_list, k)
+      correct <- sum(str_detect(df[clust_list == k, ]$categories, label))
+      total <- sum(clust_list == k)
+      #print(c(k, correct / total, label))
+      K_TP[k] <- (total - correct) / total
+      labeled[k] <- label
+    }
+  }
+  return(list(error = K_TP, label = labeled))
+}
+```
+```{r}
+# mean(error_calc(df_shuffled, clust_mds$cluster)$error)
+# length(error_calc(df_shuffled, clust_mds$cluster)$error)
+# sum(clust_mds$cluster == 0)
+
+mean(error_calc(df_shuffled, clust_mn1$cluster)$error)
+length(error_calc(df_shuffled, clust_mn1$cluster)$error)
+sum(clust_mn1$cluster == 0)
+
+mean(error_calc(df_shuffled, clust_mn2$cluster)$error)
+length(error_calc(df_shuffled, clust_mn2$cluster)$error)
+sum(clust_mn2$cluster == 0)
+
+mean(error_calc(df_shuffled, clust_mn3$cluster)$error)
+length(error_calc(df_shuffled, clust_mn3$cluster)$error)
+sum(clust_mn3$cluster == 0)
+
+mean(error_calc(df_shuffled, clust_mn4$cluster)$error)
+length(error_calc(df_shuffled, clust_mn4$cluster)$error)
+sum(clust_mn4$cluster == 0)
+
+mean(error_calc(df_shuffled, clust_mn5$cluster)$error)
+length(error_calc(df_shuffled, clust_mn5$cluster)$error)
+sum(clust_mn5$cluster == 0)
+```
+
+```{r}
+error50 <- sapply(1:length(BCB50_cos$clust_list), function(x){
+  mean(error_calc(df_shuffled, BCB50_cos$clust_list[[x]])$error)})
+
+noise50 <- sapply(1:length(BCB50_cos$clust_list), function(x){
+  sum(BCB50_cos$clust_list[[x]] == 0)})
+
+error100 <- sapply(1:length(BCB100_cos$clust_list), function(x){
+  mean(error_calc(df_shuffled, BCB100_cos$clust_list[[x]])$error)})
+
+noise100 <- sapply(1:length(BCB100_cos$clust_list), function(x){
+  sum(BCB100_cos$clust_list[[x]] == 0)})
+
+error500 <- sapply(1:length(BCB500_cos$clust_list), function(x){
+  mean(error_calc(df_shuffled, BCB500_cos$clust_list[[x]])$error)})
+
+noise500 <- sapply(1:length(BCB500_cos$clust_list), function(x){
+  sum(BCB500_cos$clust_list[[x]] == 0)})
+
+error1000 <- sapply(1:length(BCB1000_cos$clust_list), function(x){
+  mean(error_calc(df_shuffled, BCB1000_cos$clust_list[[x]])$error)})
+
+noise1000 <- sapply(1:length(BCB1000_cos$clust_list), function(x){
+  sum(BCB1000_cos$clust_list[[x]] == 0)})
+
+error2000 <- sapply(1:length(BCB2000_cos$clust_list), function(x){
+  mean(error_calc(df_shuffled, BCB2000_cos$clust_list[[x]])$error)})
+
+noise2000 <- sapply(1:length(BCB2000_cos$clust_list), function(x){
+  sum(BCB2000_cos$clust_list[[x]] == 0)})
+
+Mode(BCB100_cos$clust_num)
+Mode(BCB200_cos$clust_num)
+Mode(BCB500_cos$clust_num)
+Mode(BCB1000_cos$clust_num)
+Mode(BCB2000_cos$clust_num)
+
+Mode(error50); summary(error50); quantile(error50, c(0.025, 0.975)); summary(noise50)
+Mode(error100); summary(error100); quantile(error100, c(0.025, 0.975)); summary(noise100)
+Mode(error500); summary(error500); quantile(error500, c(0.025, 0.975)); summary(noise500)
+Mode(error1000); summary(error1000); quantile(error1000, c(0.025, 0.975)); summary(noise1000)
+Mode(error2000); summary(error2000); quantile(error2000, c(0.025, 0.975)); summary(noise2000)
+
+plot(density(error50)); plot(density(noise50))
+plot(density(error100)); plot(density(noise100))
+plot(density(error500)); plot(density(noise500))
+plot(density(error1000)); plot(density(noise1000))
+plot(density(error2000)); plot(density(noise2000))
+```
+
+
+```{r}
+## plot heatmaps 
+#View(co_dbscan)
+#k.num <- Mode(BCB50_cos$clust_num)
+
+dB100_cos = (1 - CCB100_cos$co_dbscan)
+dB200_cos = (1 - CCB200_cos$co_dbscan)
+dB500_cos = (1 - CCB500_cos$co_dbscan)
+
+#plot(cmds(dB50_cos, 2))
+# heatmap(dB100_cos, symm = T)
+# heatmap(dB200_cos, symm = T)
+# heatmap(dB500_cos, symm = T)
+
+threshB100_cos <- ifelse(CCB100_cos$co_dbscan >= 0.5, 1, 0)
+threshB200_cos <- ifelse(CCB200_cos$co_dbscan >= 0.5, 1, 0)
+threshB500_cos <- ifelse(CCB500_cos$co_dbscan >= 0.5, 1, 0)
+
+heatmap(threshB100_cos, symm = T, main = "B100", na.rm = T)
+heatmap(threshB200_cos, symm = T, main = "B200")
+heatmap(threshB500_cos, symm = T, main = "B500")
+
+# CFB100_cos <- dbscan::hdbscan(dB100_cos, minPts = 20)
+# CFB200_cos <- dbscan::hdbscan(dB200_cos, minPts = 10)
+# CFB500_cos <- dbscan::hdbscan(dB500_cos, minPts = 7)
+# 
+# CFB100_cos
+# CFB200_cos
+# CFB500_cos
+# 
+# dbscan::hullplot(dB100_cos, CFB100_cos)
+# dbscan::hullplot(dB200_cos, CFB200_cos)
+# dbscan::hullplot(dB500_cos, CFB500_cos)
+
+library(mcclust.ext)
+binder_z <- minbinder(postAllocMatrix, method = "avg")  # Binder loss
+vi_z <- minVI(postAllocMatrix, method = "avg")          # VI loss
+
+# Use hierarchical clustering to order
+# hc <- hclust(as.dist(dB500_cos), method = "average")
+# k.num <- Mode(BCB500_cos$clust_num)
+# clust_assign <- cutree(hc, k = k.num)
+# clust_assign
+# View(df_shuffled[which(clust_assign == 2), ])
+```
