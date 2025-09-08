@@ -471,7 +471,7 @@ country_centroid <- loc_wide %>%
   summarise(mn1 = mean(D1), mn2 = mean(D2), .groups = "drop") %>%
   mutate(., Country = case_when(
     Country == "UnitedKingdom" ~ "UK",
-    Country == "HongKong" ~ "Hong \n Kong",
+    Country == "HongKong" ~ "Hong Kong",
     Country == "SouthKorea" ~ "South Korea",
     TRUE ~ Country  # Leave other country names unchanged
   )) 
@@ -483,7 +483,7 @@ country_centroid %>%
   ggrepel::geom_text_repel(aes(label = Country),
                            data = subset(country_centroid,
                                          Country %in% c("USA", "Canada", "Japan",
-                                                        "India", "Hong \n Kong",
+                                                        "India", "Hong Kong",
                                                         "China", "UK", "Denmark",
                                                         "France", "Netherlands",
                                                         "South Korea", "Peru", 
