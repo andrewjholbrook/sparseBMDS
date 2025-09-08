@@ -495,3 +495,147 @@ LT_all
 # ggsave("mse_n10000.png", plot = MSE_all, path = "~/sparseBMDS/code/results_graphs",
 #        bg = "white", width = 7, height = 3.5)
 ```
+
+3. Strong priors on small data
+```{r}
+mse_prior <- read_csv("~/sparseBMDS/code/data_graphs/mse_prior.txt", 
+                      col_names = c("SD_PRIOR", "ITEMS", "NUM", "METHOD",
+                                    "MMSE", "SIGMA", "AR", "ARSS"))
+mse_prior <- mse_prior %>% mutate(NUMTYPE = ifelse(NUM != ITEMS, 
+                                                   paste0(METHOD, NUM), METHOD))
+head(mse_prior)
+```
+```{r}
+theme_set(theme_bw())
+theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
+pal <- c("FULL" = "orangered2", "BAND10" = "darkgoldenrod1", 
+         "BAND20" = "darkred", "LM10" = "darkcyan", 
+         "LM20" = "darkblue") 
+
+# n = 50
+mp50 <- mse_prior %>% 
+  filter(ITEMS == 50) %>% 
+  ggplot(aes(x = SD_PRIOR, y = MMSE, colour = NUMTYPE)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("FULL", "BAND10", "BAND20", "LM10", "LM20"),
+                     labels = c("Full BMDS", 
+                                "B-sBMDS \n (10 bands)", 
+                                "B-sBMDS \n (20 bands)",
+                                "L-sBMDS \n (10 landmarks)",
+                                "L-sBMDS \n (20 landmarks)")) +
+  labs(title = "N = 50", x = NULL, y = NULL) + 
+  scale_x_continuous(breaks = c(.125, .25, .5, 1), 
+                     labels = c("1/8", "1/4", "1/2", "1")) + 
+  ylim(0, 4.5) + 
+  theme(legend.key.height = unit(0.9, "cm"))
+
+# n = 100
+mp100 <-mse_prior %>% 
+  filter(ITEMS == 100) %>% 
+  ggplot(aes(x = SD_PRIOR, y = MMSE, colour = NUMTYPE)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("FULL", "BAND10", "BAND20", "LM10", "LM20"),
+                     labels = c("Full BMDS", 
+                                "B-sBMDS \n (10 bands)", 
+                                "B-sBMDS \n (20 bands)",
+                                "L-sBMDS \n (10 landmarks)",
+                                "L-sBMDS \n (20 landmarks)")) +
+  labs(title = "N = 100", x = NULL, y = NULL) + 
+  scale_x_continuous(breaks = c(.125, .25, .5, 1), 
+                     labels = c("1/8", "1/4", "1/2", "1")) + 
+  ylim(0, 4.5) + 
+  theme(legend.key.height = unit(0.9, "cm"))
+
+# n = 1000
+mp1000 <- mse_prior %>% 
+  filter(ITEMS == 1000) %>% 
+  ggplot(aes(x = SD_PRIOR, y = MMSE, colour = NUMTYPE)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("FULL", "BAND10", "BAND20", "LM10", "LM20"),
+                     labels = c("Full BMDS", 
+                                "B-sBMDS \n (10 bands)", 
+                                "B-sBMDS \n (20 bands)",
+                                "L-sBMDS \n (10 landmarks)",
+                                "L-sBMDS \n (20 landmarks)")) +
+  labs(title = "N = 1000", x = NULL, y = NULL) + 
+  scale_x_continuous(breaks = c(.125, .25, .5, 1), 
+                     labels = c("1/8", "1/4", "1/2", "1")) + 
+  ylim(0, 4.5) + 
+  theme(legend.key.height = unit(0.9, "cm"))
+
+mp_all <- ggpubr::ggarrange(mp50, mp100, mp1000, nrow = 1, 
+                              ncol = 3, common.legend = TRUE, legend = "right")
+ggpubr::annotate_figure(mp_all, 
+                        bottom = "Standard deviation of prior", 
+                        left = "Mean of MSE across distances")
+```
+
+```{r}
+ggsave("mse_prior.png", path = "~/sparseBMDS/code/results_graphs", 
+       bg = "white", width = 10, height = 3.5)
+```
+
+4. Laplace/Gaussian likelihood
+```{r}
+GE_model <- read_csv("~/sparseBMDS/code/data_graphs/mse_GEmodel.txt",
+                     col_names = c("beta", "item", "band", "method", "MSE", 
+                                   "sigma", "AR", "AR_SS"))
+head(GE_model)
+```
+
+```{r}
+theme_set(theme_bw())
+theme_update(axis.title.x = element_blank(), axis.title.y = element_blank())
+pal <- c("BAND" = "darkred", "LM" = "darkblue") 
+
+b1 <- GE_model %>% filter(beta == 0) %>% 
+  ggplot(aes(x = band, y = MSE, color = method)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"),
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(beta == 0), x = NULL, y = NULL) 
+
+b2 <- GE_model %>% filter(beta == 0.25) %>% 
+  ggplot(aes(x = band, y = MSE, color = method)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"),
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(beta == 0.25), x = NULL, y = NULL) 
+
+b3 <- GE_model %>% filter(beta == 0.5) %>% 
+  ggplot(aes(x = band, y = MSE, color = method)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"),
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(beta == 0.5), x = NULL, y = NULL) 
+
+b4 <- GE_model %>% filter(beta == 1) %>% 
+  ggplot(aes(x = band, y = MSE, color = method)) + 
+  geom_point(size = 1.2) + 
+  geom_line() + 
+  scale_color_manual(values = pal, name = "Method", 
+                     breaks = c("BAND", "LM"),
+                     labels = c("B-sBMDS", "L-sBMDS")) +
+  labs(title = expression(beta == 1), x = NULL, y = NULL) 
+
+b_all <- ggpubr::ggarrange(b1, b2, b3, b4, common.legend = T, legend = "right")
+ggpubr::annotate_figure(b_all, bottom = "Number of bands (landmarks)", 
+                        left = "Mean of MSE across distances")
+```
+```{r}
+ggsave("mse_GE.png", path = "~/sparseBMDS/code/results_graphs",
+       bg = "white", width = 7, height = 3.5)
+```
+
