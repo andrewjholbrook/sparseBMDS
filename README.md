@@ -1,6 +1,6 @@
 # Sparse BMDS (sBMDS)
 
-The folder `code` contains five different folders. We briefly describe each one and highlight important files:
+The folder `code` contains six different folders. We briefly describe each one and highlight important files:
 
 1. `Rscript`:
    
@@ -10,23 +10,29 @@ The folder `code` contains five different folders. We briefly describe each one 
 
 `MassiveMDS_mse.R`/ `LT_mse.R`/`HD_mse.R`: calculate mean MSE and median error for the latent variables and sigma respectively (under specified and misspecified cases)
 
+`band_sensitivity.R`/ `GE_sensitivity.R`/ `prior_mse.R`: calculate mean MSE and median error for the latent variables and sigma respectively (varying model assumptions)
+
 `gaussian_grid.R`: simulate data from known Gaussian distributions and run HMC for a fixed sigma, returns the mean of the estimated latent locations across the iterations
 
 `efficiency_comparison.R`: compare the time and the minimum effective sample size (ess) across different MCMC algorithms (MH, HMC) and BMDS variants (full BMDS, landmark sBMDS, banded sBMDS)
 
 2. `data_graphs`: simulation output used for the plots in the sBMDS manuscript
    
-3. `fluBMDS`: apply sBMDS variants to four influenza subtypes
+3. `fluBMDS`: apply sBMDS variants to four influenza subtypes.
 
 `flufunc.R`: functions to compute the viral latent locations' priors and posteriors and run an HMC sampler
 
 `fluSampler.R`: create the influenza subtype tree and run the HMC sampler
 
 `fluPlots.R`: generate plots of viral diffusion rates and calculate Hellinger distances
-   
-4. `results_graphs`: the plots in the sBMDS manuscript
-   
-5. `rmd_files`: code used to generate the plots 
 
+4. `EN_clust`: code to apply sBMDS variants to arXiv abstract data
+   
+5. `results_graphs`: the plots in the sBMDS manuscript
+   
+6. `rmd_files`: code used to generate the plots 
+
+
+Please contact `amisheth26@g.ucla.edu` or `aholbroo@g.ucla.edu` for access to influenza or ArXiv data.
 
 
